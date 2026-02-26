@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warrior 8-Direction Prototype</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d0d0d;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Press Start 2P', cursive;
+            image-rendering: pixelated;
+        }
+
+        /* Utils for pixel art borders using box-shadow to simulate thickness without blurring */
+        .pixel-border {
+            box-shadow:
+                -4px 0 0 0 #000,
+                4px 0 0 0 #000,
+                0 -4px 0 0 #000,
+                0 4px 0 0 #000;
+            margin: 4px;
+            /* Space for the shadow border */
+        }
+
+        .pixel-border-inset {
+            box-shadow: inset 2px 2px 0px 0px #00000050, inset -2px -2px 0px 0px #ffffff20;
+        }
+
+        #ui-wrapper {
+            background-color: #130e07;
+            /* Dark Brown Base - Solid */
+            /* Dark texture using only solid colors */
+            padding: 40px;
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            /* Center horizontally aligned sidebars */
+            box-shadow: 0 0 100px rgba(0, 0, 0, 1);
+        }
+
+        /* Shared Panel Style */
+        .retro-panel {
+            background-color: #2b1d1a;
+            /* Dark Brown Panel */
+            border: 4px solid #4a4a4a;
+            /* Dark Grey Border */
+            position: relative;
+            box-shadow: inset 0 0 30px #000;
+        }
+
+        /* Outer black border for panels */
+        .retro-panel::after {
+            content: "";
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            right: -8px;
+            bottom: -8px;
+            border: 2px solid #000;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* LEFT SIDEBAR - Character & Stats */
+        #status-sidebar {
+            width: 240px;
+            height: 600px;
+            /* Matched to Inventory */
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            color: #dcdcdc;
+        }
+
+        .profile-section {
+            width: 100%;
+            aspect-ratio: 128 / 100;
+            background-color: #111;
+            border: 4px solid #5d4037;
+            /* Wood/Frame color */
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            box-shadow: inset 0 0 10px #000;
+            position: relative;
+        }
+
+        .profile-section::before {
+            /*content: "PORTRAIT";*/
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            font-size: 8px;
+            opacity: 0.3;
+        }
+
+        .profile-img {
+            width: 100%;
+            height: 100%;
+            background-image: url('Asset/UI/expressions_Player.png');
+            background-size: 300% 200%;
+            image-rendering: pixelated;
+        }
+
+        /* Expressions: Percentages avoid bleed on scaling */
+        .profile-img.base {
+            background-position: 0% 0%;
+        }
+
+        .profile-img.low-hp {
+            background-position: 50% 0%;
+        }
+
+        .profile-img.action {
+            background-position: 100% 0%;
+        }
+
+        .profile-img.pickup {
+            background-position: 0% 100%;
+        }
+
+        .profile-img.hurt {
+            background-position: 50% 100%;
+        }
+
+        .profile-img.dead {
+            background-position: 100% 100%;
+        }
+
+        .status-bar-container {
+            margin-bottom: 15px;
+            width: 100%;
+        }
+
+        .status-label {
+            font-size: 10px;
+            margin-bottom: 8px;
+            color: #aaa;
+            text-transform: uppercase;
+            text-shadow: 2px 2px #000;
+        }
+
+        .bar-bg {
+            width: 100%;
+            height: 24px;
+            background-color: #111;
+            border: 2px solid #000;
+            position: relative;
+            box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.8);
+        }
+
+        .bar-fill {
+            height: 100%;
+        }
+
+        /* Retro Gradients for bars */
+        .bar-fill.health {
+            background: linear-gradient(to bottom, #ff5252, #b71c1c);
+            border-right: 2px solid #ff8a80;
+            /* Highlight */
+        }
+
+        .bar-fill.stamina {
+            background: linear-gradient(to bottom, #69f0ae, #1b5e20);
+            border-right: 2px solid #b9f6ca;
+        }
+
+        .bar-fill.ready {
+            background: linear-gradient(to bottom, #ffd740, #ff6f00);
+            border-right: 2px solid #ffecb3;
+        }
+
+        .bar-fill.charging {
+            background: linear-gradient(to bottom, #ff6f00, #e65100);
+        }
+
+        .health-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 2px;
+            line-height: 20px;
+            font-size: 10px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+            pointer-events: none;
+        }
+
+        /* CENTER - Game */
+        #game-container {
+            /* Inherits retro-panel styles */
+            display: block;
+            /* Ensure visibility for panel border */
+        }
+
+        /* RIGHT SIDEBAR - Inventory */
+        #inventory-sidebar {
+            width: 240px;
+            height: 600px;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #d7ccc8;
+        }
+
+        #inventory-sidebar h3 {
+            margin: 0 0 20px 0;
+            font-size: 14px;
+            color: #deb887;
+            text-shadow: 2px 2px 0 #000;
+            border-bottom: 4px solid #281a16;
+            width: 100%;
+            text-align: center;
+            padding-bottom: 10px;
+        }
+
+        .backpack-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            width: 100%;
+            /* Removed background and border as requested */
+            padding: 5px 0;
+        }
+
+        .inventory-slot {
+            width: 80px;
+            height: 80px;
+            background-color: #1a100d;
+            border: 2px solid #5d4037;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            box-shadow: inset 0 0 10px #000;
+            image-rendering: pixelated;
+        }
+
+        /* Slot hover effect */
+        .inventory-slot:hover {
+            background-color: #2d1c18;
+            border-color: #8d6e63;
+        }
+
+        .inventory-icon {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .inventory-icon img {
+            max-width: 60px;
+            max-height: 60px;
+            object-fit: contain;
+            image-rendering: pixelated;
+            filter: drop-shadow(2px 2px 0 #000);
+        }
+
+        .item-count {
+            font-size: 10px;
+            color: #ffd700;
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .inventory-slot.empty .inventory-icon,
+        .inventory-slot.empty .item-count {
+            visibility: hidden;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.0/dist/phaser.min.js"></script>
+    <script src="Player.js"></script>
+    <script src="Item.js"></script>
+    <script src="Enemy.js"></script>
+    <script src="RangedEnemy.js"></script>
+    <script src="SkeletonEnemy.js"></script>
+    <script src="SkullBugEnemy.js"></script>
+    <script src="VamBatEnemy.js"></script>
+    <script src="Wall.js"></script>
+    <script src="Door.js"></script>
+    <script src="Chest.js"></script>
+    <script src="Trap.js"></script>
+    <script src="HoldingTrap.js"></script>
+    <script src="Portal.js"></script>
+    <script src="LevelData.js"></script>
+    <script src="Levels/level_tutorial.js"></script>
+    <script src="Levels/level_1.js"></script>
+    <script src="Levels/level_2.js"></script>
+    <script src="StartScene.js"></script>
+    <script src="game.js"></script>
+</head>
+
+<body>
+    <div id="ui-wrapper">
+        <div id="status-sidebar" class="retro-panel">
+            <div class="profile-section">
+                <div class="profile-img base" id="player-profile-img"></div>
+            </div>
+
+            <div class="status-bar-container">
+                <div class="status-label">Health</div>
+                <div class="bar-bg">
+                    <div class="bar-fill health" id="bar-health" style="width: 100%;"></div>
+                    <div class="health-text" id="text-health">100/100</div>
+                </div>
+            </div>
+
+            <div class="status-bar-container">
+                <div class="status-label">Stamina</div>
+                <div class="bar-bg">
+                    <div class="bar-fill stamina" id="bar-stamina" style="width: 100%;"></div>
+                    <div class="health-text" id="text-stamina">50/50</div>
+                </div>
+            </div>
+
+            <!-- Cooldown Bars -->
+            <div class="status-bar-container">
+                <div class="status-label">Jump Kick</div>
+                <div class="bar-bg">
+                    <div class="bar-fill ready" id="bar-kick" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="status-bar-container">
+                <div class="status-label">Ground Dash</div>
+                <div class="bar-bg">
+                    <div class="bar-fill ready" id="bar-dash" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="status-bar-container">
+                <div class="status-label">Roar</div>
+                <div class="bar-bg">
+                    <div class="bar-fill ready" id="bar-roar" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <div class="status-bar-container">
+                <div class="status-label">Ground Pound</div>
+                <div class="bar-bg">
+                    <div class="bar-fill ready" id="bar-pound" style="width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+        <div id="game-container" class="retro-panel"></div>
+        <div id="inventory-sidebar" class="retro-panel">
+            <h3 style="text-align: center; border-bottom: 2px solid #3e2723; padding-bottom: 10px; margin-bottom: 0;">
+                BACKPACK
+            </h3>
+
+            <div class="backpack-grid" id="backpack-grid">
+                <!-- 10 Generic Slots -->
+                <div class="inventory-slot empty" id="slot-0"></div>
+                <div class="inventory-slot empty" id="slot-1"></div>
+                <div class="inventory-slot empty" id="slot-2"></div>
+                <div class="inventory-slot empty" id="slot-3"></div>
+                <div class="inventory-slot empty" id="slot-4"></div>
+                <div class="inventory-slot empty" id="slot-5"></div>
+                <div class="inventory-slot empty" id="slot-6"></div>
+                <div class="inventory-slot empty" id="slot-7"></div>
+                <div class="inventory-slot empty" id="slot-8"></div>
+                <div class="inventory-slot empty" id="slot-9"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loading-text">LOADING...</div>
+    </div>
+
+    <!-- Start Menu -->
+    <div id="start-menu">
+        <div class="menu-content">
+            <img src="Asset/UI/Logo.png" class="logo" alt="Ultimate Resurrection Warrior">
+            <button id="start-btn">
+                <img src="Asset/UI/button_Start.png" alt="START GAME">
+            </button>
+        </div>
+    </div>
+
+    <style>
+        /* Overlay Styles */
+        #loading-screen,
+        #start-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            background-color: #0d0d0d;
+        }
+
+        /* Loading specific */
+        #loading-screen {
+            color: #fff;
+            font-size: 24px;
+            letter-spacing: 4px;
+        }
+
+        .loading-text {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Start Menu specific */
+        #start-menu {
+            /* background-image removed to show Phaser Scene behind */
+            background-color: transparent;
+            /* background-size: cover; */
+            /* background-position: center; */
+            /* background-repeat: no-repeat; */
+            background-repeat: no-repeat;
+            align-items: flex-start;
+            /* Move the content block to the left */
+            padding-left: 10%;
+            /* Offset from the left edge */
+            display: none;
+            /* Hidden by default, shown via JS */
+        }
+
+        .menu-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* Center logo and button relative to each other */
+        }
+
+        #start-menu .logo {
+            width: 600px;
+            /* Increased size */
+            height: auto;
+            margin-bottom: 60px;
+            image-rendering: pixelated;
+        }
+
+        #start-btn {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            transition: transform 0.1s;
+            outline: none;
+        }
+
+        #start-btn img {
+            width: 300px;
+            /* Adjust size as needed */
+            height: auto;
+            image-rendering: pixelated;
+            display: block;
+        }
+
+        #start-btn:hover {
+            transform: scale(1.05);
+        }
+
+        #start-btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</body>
+
+</html>

@@ -1,0 +1,17 @@
+# Source files (too large for GitHub)
+Blender/
+TEMP/
+*.blend
+*.blend1
+*.mp4
+*.exe
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project files
+node_modules/
+dist/
+build/

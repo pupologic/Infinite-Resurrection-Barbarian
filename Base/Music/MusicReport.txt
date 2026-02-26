@@ -1,0 +1,25 @@
+Report created: 
+	26/02/2026	00:54:55
+
+Project name: Music.aep
+
+Source files collected to: 
+	C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Base\Music
+
+Source files collected: All
+
+Collected comps:  
+	Triha
+	Start_Grotto
+	
+Number of collected files:  2
+
+Size of collected files:  125 MB
+
+Collected source files: 
+	C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Asset\Audio\Start_Grotto.mp3
+	C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Asset\Audio\Triha.mp4
+	
+Rendering plug-ins:
+	Classic 3D
+	

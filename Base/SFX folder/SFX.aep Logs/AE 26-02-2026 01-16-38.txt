@@ -1,0 +1,22 @@
+Adobe After Effects v25.5 Windows 64 render log for project “SFX.aep”
+
+Rendering started on 26/02/2026 at 01:16:38
+
+  26/02/2026 01:16:38: Starting composition “fast_swoosh_#3-1772079135539”.
+
+  Output To: C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Asset\Audio\AutoPunch.mp3    26/02/2026 01:16:38: Finished composition “fast_swoosh_#3-1772079135539”.
+
+
+  26/02/2026 01:16:38: Starting composition “enter_portal_#2-1772079202867”.
+
+  Output To: C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Asset\Audio\NextLevel.mp3    26/02/2026 01:16:38: Finished composition “enter_portal_#2-1772079202867”.
+
+
+  26/02/2026 01:16:38: Starting composition “enter_portal_#4-1772079211588”.
+
+  Output To: C:\Users\pupob\Desktop\PUPO\Code\Vibe Code\Infinite Ressurection Barbarian_EditorTest\Asset\Audio\Reborn.mp3    26/02/2026 01:16:39: Finished composition “enter_portal_#4-1772079211588”.
+
+
+  Total Time Elapsed: 0 Seconds
+Log closed on 26/02/2026 at 01:16:39
+
