@@ -10,6 +10,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         const shieldTexture = scene.textures.get('warrior_shield_full');
         const roarTexture = scene.textures.get('warrior_roar_full');
         const poundTexture = scene.textures.get('warrior_pound_full');
+        const rebornTexture = scene.textures.get('warrior_reborn_full');
 
         // All sheets are 8x8
         const frameWidth = texture.source[0].width / 8;
@@ -42,6 +43,9 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         const deadFrameWidth = deadTexture.source[0].width / 8;
         const deadFrameHeight = deadTexture.source[0].height / 8;
 
+        const rebornFrameWidth = rebornTexture.source[0].width / 8;
+        const rebornFrameHeight = rebornTexture.source[0].height / 8;
+
         scene.textures.addSpriteSheet('warrior', texture.source[0].image, { frameWidth, frameHeight });
         scene.textures.addSpriteSheet('warrior_idle', idleTexture.source[0].image, { frameWidth: idleFrameWidth, frameHeight: idleFrameHeight });
         scene.textures.addSpriteSheet('warrior_punch', punchTexture.source[0].image, { frameWidth: punchFrameWidth, frameHeight: punchFrameHeight });
@@ -54,6 +58,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         scene.textures.addSpriteSheet('warrior_pound', poundTexture.source[0].image, { frameWidth: poundFrameWidth, frameHeight: poundFrameHeight });
         scene.textures.addSpriteSheet('warrior_hurt', hurtTexture.getSourceImage(), { frameWidth: hurtFrameWidth, frameHeight: hurtFrameHeight });
         scene.textures.addSpriteSheet('warrior_dead', deadTexture.source[0].image, { frameWidth: deadFrameWidth, frameHeight: deadFrameHeight });
+        scene.textures.addSpriteSheet('warrior_reborn', rebornTexture.source[0].image, { frameWidth: rebornFrameWidth, frameHeight: rebornFrameHeight });
 
         const directions = ['down', 'down-left', 'left', 'up-left', 'up', 'up-right', 'right', 'down-right'];
         directions.forEach((dir, rowIndex) => {
@@ -115,6 +120,11 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             scene.anims.create({
                 key: `dead-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_dead', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
+                frameRate: 12, repeat: 0
+            });
+            scene.anims.create({
+                key: `reborn-${dir}`,
+                frames: scene.anims.generateFrameNumbers('warrior_reborn', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
                 frameRate: 12, repeat: 0
             });
         });
@@ -205,6 +215,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.isRoaring = false;
         this.isPounding = false;
         this.isDefending = false;
+        this.isReborning = false;
         this.isPickingUp = false;
         this.pickupTimer = null;
 
@@ -336,6 +347,15 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     update(time, delta) {
+        if (this.isReborning) {
+            this.setVelocity(0); // Motion lock while reborning
+            // Shadow stays under center
+            if (this.shadow) {
+                this.shadow.setPosition(this.x, this.y + 40);
+            }
+            return;
+        }
+
         if (this.isDead) {
             if (this.shieldFx) this.shieldFx.setVisible(false);
             // Update shadow position even when dead so it stays under the body
@@ -612,8 +632,8 @@ class Player extends Phaser.Physics.Arcade.Sprite {
                 this.lastDirection = newDir;
             }
         }
-        else if (this.actionLockTimer > 0 || this.isHurt) {
-            this.setVelocity(0); // Locked by action (Roar/Pound) or Hurt status
+        else if (this.actionLockTimer > 0 || this.isHurt || this.isReborning) {
+            this.setVelocity(0); // Locked by action (Roar/Pound) or Hurt status or Reborning
         }
         else if (!this.isJumpStartup && !this.isJumpKicking && !this.isGroundDashing && !this.hasJumpKicked) {
             this.setVelocity(0);
@@ -706,12 +726,20 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.shadow.setDepth(-19997);
         const shadowScale = 1 - (this.altitude / 100);
         this.shadow.setScale(Phaser.Math.Clamp(shadowScale, 0.4, 1));
-        this.shadow.setAlpha(Phaser.Math.Clamp(shadowScale * 0.4, 0.1, 0.9));
+        this.shadow.setAlpha(Phaser.Math.Clamp(shadowScale * 0.4, 0.1, 1));
 
         this.punchPressed = currentPointerDown;
     }
 
     handleAnimations(moveX, moveY) {
+        if (this.isReborning) {
+            const targetReborn = `reborn-${this.lastDirection}`;
+            if (!this.anims.currentAnim || this.anims.currentAnim.key !== targetReborn) {
+                this.play(targetReborn, true);
+            }
+            return;
+        }
+
         if (this.isHurt) {
             const targetHurt = `hurt-${this.lastDirection}`;
             if (!this.anims.currentAnim || this.anims.currentAnim.key !== targetHurt) {
@@ -786,7 +814,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.isDefending) amount = amount / 2;
         amount = Math.round(amount);
 
-        this.hp -= amount;
+        this.hp = Math.max(0, this.hp - amount);
         console.log("Player HP:", this.hp);
 
         if (this.scene.showDamagePopup) {
@@ -879,6 +907,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     respawn() {
+        this.clearTint();
         this.isDead = false;
         this.setActive(true);
         this.setVisible(true);
@@ -911,6 +940,17 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
         // Trigger Spawn Effect
         this.triggerSpawnEffect();
+
+        // --- START REBORN ANIMATION ---
+        this.isReborning = true;
+        this.setVelocity(0);
+        this.play(`reborn-${this.lastDirection}`, true);
+
+        this.once('animationcomplete', (anim) => {
+            if (anim.key.startsWith('reborn-')) {
+                this.isReborning = false;
+            }
+        });
 
         // Notify scene to trigger reborn effects
         this.scene.events.emit('player-respawned');
@@ -1193,6 +1233,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
                 // Visual FX
                 const fx = this.scene.add.sprite(px, py, 'warrior_pound_fx');
+                if (this.scene.poundFxGroup) this.scene.poundFxGroup.add(fx);
                 fx.setDepth(py); // Depth sort
                 fx.setRotation(0); // Keeping angle zero as requested
                 fx.play('pound-fx-anim');

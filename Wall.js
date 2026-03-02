@@ -3,14 +3,14 @@ class Wall extends Phaser.Physics.Arcade.Sprite {
     // Priorizamos caixas fixas para tilesets conhecidos por performance.
     static TILE_COLLISION_REGISTRY = {
         'ground_slice': {
-            0: { w: 64, h: 48, offX: 0, offY: -8 },  // Topo Esq
-            1: { w: 64, h: 48, offX: 0, offY: -8 },  // Topo Mid
-            2: { w: 64, h: 48, offX: 0, offY: -8 },  // Topo Dir
-            3: { w: 48, h: 64, offX: -8, offY: 0 },  // Esq
-            5: { w: 48, h: 64, offX: 8, offY: 0 },   // Dir
-            6: { w: 64, h: 48, offX: 0, offY: 8 },   // Base Esq
-            7: { w: 64, h: 48, offX: 0, offY: 8 },   // Base Mid
-            8: { w: 64, h: 48, offX: 0, offY: 8 },   // Base Dir
+            0: { w: 64, h: 64, offX: 0, offY: 0 },  // Topo Esq
+            1: { w: 64, h: 64, offX: 0, offY: 0 },  // Topo Mid
+            2: { w: 64, h: 64, offX: 0, offY: 0 },  // Topo Dir
+            3: { w: 64, h: 64, offX: 0, offY: 0 },  // Esq
+            5: { w: 64, h: 64, offX: 0, offY: 0 },  // Dir
+            6: { w: 64, h: 64, offX: 0, offY: 0 },  // Base Esq
+            7: { w: 64, h: 64, offX: 0, offY: 0 },  // Base Mid
+            8: { w: 64, h: 64, offX: 0, offY: 0 },  // Base Dir
         },
         'inner_corner_sheet': {
             0: { w: 48, h: 48, offX: -8, offY: -8 },  // Frame 0 (Ajuste conforme necessário)

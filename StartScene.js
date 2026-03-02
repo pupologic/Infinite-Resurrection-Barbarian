@@ -50,7 +50,7 @@ class StartScene extends Phaser.Scene {
         this.midOffsetX = 300;
         this.midOffsetY = 50;
         this.fgOffsetX = 130;
-        this.fgOffsetY = 50;
+        this.fgOffsetY = 60;
 
         // --- CONFIGURATION: PARALLAX INTENSITY ---
         this.loopSpeed = 0.0005;
@@ -58,41 +58,48 @@ class StartScene extends Phaser.Scene {
         this.midAmpX = 10; this.midAmpY = 1;
         this.fgAmpX = 5; this.fgAmpY = 0;
 
-        // Play Start Menu Music
+        // Define Music (but don't play yet to wait for interaction)
         if (!this.sound.get('Start_Menu')) {
             this.menuMusic = this.sound.add('Start_Menu', { loop: true, volume: 0.5 });
-            this.menuMusic.play();
         } else {
             this.menuMusic = this.sound.get('Start_Menu');
-            if (!this.menuMusic.isPlaying) this.menuMusic.play();
         }
 
 
-        // ... UI Setup (Full Screen Override) ...
+        // Start screen: fill the window (cover mode — no black bars)
+        if (typeof window.scaleGameFill === 'function') window.scaleGameFill();
+
+        // ... UI Setup: hide game UI panels during Start Menu ...
         const uiWrapper = document.getElementById('ui-wrapper');
         const statusSidebar = document.getElementById('status-sidebar');
         const inventorySidebar = document.getElementById('inventory-sidebar');
         const gameContainer = document.getElementById('game-container');
 
+        // Make ui-wrapper transparent (don't hide it or the canvas inside disappears!)
         if (uiWrapper) {
             uiWrapper.style.padding = '0';
             uiWrapper.style.background = 'none';
             uiWrapper.style.boxShadow = 'none';
-            uiWrapper.style.width = '100vw';
-            uiWrapper.style.height = '100vh';
         }
         if (statusSidebar) statusSidebar.style.display = 'none';
         if (inventorySidebar) inventorySidebar.style.display = 'none';
 
+        // Pull game-container out of flex flow and fill the full scale-root
+        // This eliminates dark border lines from retro-panel while keeping the canvas visible
         if (gameContainer) {
-            gameContainer.style.width = '100vw';
-            gameContainer.style.height = '100vh';
+            gameContainer.style.position = 'absolute';
+            gameContainer.style.top = '0';
+            gameContainer.style.left = '0';
+            gameContainer.style.width = '1320px';
+            gameContainer.style.height = '680px';
             gameContainer.style.border = 'none';
             gameContainer.style.boxShadow = 'none';
+            gameContainer.style.background = 'none';
+            gameContainer.style.zIndex = '1';
         }
 
-        // Initial Resize
-        this.scale.resize(window.innerWidth, window.innerHeight);
+        // Phaser canvas fills the full start screen
+        this.scale.resize(1320, 680);
 
         // Create Images
         const w = this.scale.width;
@@ -112,29 +119,29 @@ class StartScene extends Phaser.Scene {
         // Apply Scaling Logic
         this.updateLayout(w, h);
 
-        // Handle Resize Event
-        const onResize = (gameSize) => {
-            if (this.scene.isActive()) {
-                this.updateLayout(gameSize.width, gameSize.height);
-            }
-        };
-
-        this.scale.on('resize', onResize);
-
-        // Cleanup on shutdown
-        this.events.once('shutdown', () => {
-            this.scale.off('resize', onResize);
-        });
-
         // ... Start Menu Interaction ...
         const startMenu = document.getElementById('start-menu');
         const startBtn = document.getElementById('start-btn');
         const loadingScreen = document.getElementById('loading-screen');
+        const clickToStartScreen = document.getElementById('click-to-start-screen');
 
+        // Initial State
         if (loadingScreen) loadingScreen.style.display = 'none';
-        if (startMenu) startMenu.style.display = 'flex';
 
+        if (clickToStartScreen) {
+            clickToStartScreen.style.display = 'flex';
 
+            // On click, play sound and proceed to Menu
+            clickToStartScreen.onclick = () => {
+                this.sound.play('StartButton');
+                if (this.menuMusic) this.menuMusic.play();
+                clickToStartScreen.style.display = 'none';
+                if (startMenu) startMenu.style.display = 'flex';
+            };
+        } else {
+            // Fallback
+            if (startMenu) startMenu.style.display = 'flex';
+        }
 
         if (startBtn) {
             const newBtn = startBtn.cloneNode(true);
@@ -143,24 +150,32 @@ class StartScene extends Phaser.Scene {
                 this.sound.play('StartButton');
                 if (this.menuMusic) this.menuMusic.stop();
 
-                // UI Restoration Logic
+                // UI Restoration Logic: show game panels again
                 if (startMenu) startMenu.style.display = 'none';
                 if (uiWrapper) {
                     uiWrapper.style.padding = '';
                     uiWrapper.style.background = '';
                     uiWrapper.style.boxShadow = '';
-                    uiWrapper.style.width = '';
-                    uiWrapper.style.height = '';
+                    // Apply scale(0.8) centered ONLY when game officially starts
+                    uiWrapper.style.transform = 'scale(0.8)';
+                    uiWrapper.style.transformOrigin = 'center center';
                 }
+                // Switch to contain mode for gameplay (fits screen with no crop)
+                if (typeof window.scaleGameContain === 'function') window.scaleGameContain();
                 if (statusSidebar) statusSidebar.style.display = '';
                 if (inventorySidebar) inventorySidebar.style.display = '';
                 if (gameContainer) {
+                    gameContainer.style.position = '';
+                    gameContainer.style.top = '';
+                    gameContainer.style.left = '';
                     gameContainer.style.width = '';
                     gameContainer.style.height = '';
                     gameContainer.style.border = '';
                     gameContainer.style.boxShadow = '';
+                    gameContainer.style.background = '';
+                    gameContainer.style.zIndex = '';
                 }
-                // Return to Fixed Game Size
+                // Resize back to game canvas size
                 this.scale.resize(800, 600);
                 this.scene.start('GameScene');
             };

@@ -28,6 +28,14 @@ window.LevelManifest = {
         traps: [
             { x: -100, y: 50 },
             { x: 100, y: 50 }
+        ],
+        runes: [
+            { x: -300, y: 600, frame: 0 },
+            { x: -200, y: 600, frame: 1 },
+            { x: -100, y: 600, frame: 2 },
+            { x: 0, y: 600, frame: 3 },
+            { x: 100, y: 600, frame: 4 },
+            { x: 200, y: 600, frame: 5 }
         ]
     },
     1: {

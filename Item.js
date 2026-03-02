@@ -32,6 +32,34 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         this.extra = extra;
         this.setDepth(y);
 
+        // --- GLOW EFFECT ---
+        const glowKey = 'item_glow';
+        if (!scene.textures.exists(glowKey)) {
+            const glowGraphics = scene.make.graphics();
+            glowGraphics.fillStyle(0xffffff, 1);
+            glowGraphics.fillCircle(16, 16, 14);
+            // Apply a slight gradient or blur could be nice, but simple circle for now
+            glowGraphics.generateTexture(glowKey, 32, 32);
+        }
+
+        this.glow = scene.add.image(x, y, glowKey);
+        this.glow.setTint(color);
+        this.glow.setAlpha(0.4);
+        this.glow.setBlendMode('ADD');
+        this.glow.setScale(1.2);
+        this.glow.setDepth(this.depth - 1);
+
+        // Glow pulsing animation
+        scene.tweens.add({
+            targets: this.glow,
+            scale: 1.2,
+            alpha: 0.2,
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
         // Random value for coin
         if (type === 'COIN') {
             this.value = Phaser.Math.Between(1, 10);
@@ -45,14 +73,31 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         }
     }
 
+    preUpdate(time, delta) {
+        super.preUpdate(time, delta);
+        if (this.glow) {
+            this.glow.setPosition(this.x, this.y);
+            this.glow.setVisible(this.visible);
+            this.glow.setDepth(this.depth - 1);
+        }
+    }
+
     startFloating() {
         this.startY = this.y;
         this.scene.tweens.add({
-            targets: this,
-            y: this.y - 5,
-            duration: 1000,
+            targets: [this, this.glow],
+            y: this.y - 12, // Increased bobbing height
+            duration: 1200,
             yoyo: true,
-            repeat: -1
+            repeat: -1,
+            ease: 'Sine.easeInOut'
         });
+    }
+
+    destroy(fromScene) {
+        if (this.glow) {
+            this.glow.destroy();
+        }
+        super.destroy(fromScene);
     }
 }

@@ -20,6 +20,77 @@ const config = {
     pixelArt: true
 };
 
+// --- GLOBAL GAME & VOLUME SETTINGS ---
+window.GameSettings = {
+    ambientVolume: 0.4,
+    sfxVolume: 0.6
+};
+
+// Global Sound Categorization & Interceptor
+(function () {
+    const ambientKeys = ['Ambient', 'Start_Menu', 'ambient', 'start_menu', 'StartMenu', 'Background'];
+
+    Phaser.Sound.BaseSoundManager.prototype._original_play = Phaser.Sound.BaseSoundManager.prototype.play;
+    Phaser.Sound.BaseSoundManager.prototype._original_add = Phaser.Sound.BaseSoundManager.prototype.add;
+
+    const wrapSound = (key, config, originalMethod, context) => {
+        const isAmbient = ambientKeys.includes(key);
+        const multiplier = isAmbient ? window.GameSettings.ambientVolume : window.GameSettings.sfxVolume;
+        const requestedVol = config.volume !== undefined ? config.volume : 1;
+        config.volume = requestedVol * multiplier;
+        const sound = originalMethod.call(context, key, config);
+        if (sound) {
+            sound._originalBaseVolume = requestedVol;
+            sound._isAmbientCategory = isAmbient;
+        }
+        return sound;
+    };
+
+    Phaser.Sound.BaseSoundManager.prototype.play = function (key, config = {}) {
+        return wrapSound(key, config, this._original_play, this);
+    };
+    Phaser.Sound.BaseSoundManager.prototype.add = function (key, config = {}) {
+        return wrapSound(key, config, this._original_add, this);
+    };
+})();
+
+// Helper to update ALL tracked sounds (playing + looping ambient)
+const _ambientKeys = ['Ambient', 'Start_Menu', 'ambient', 'start_menu', 'StartMenu', 'Background'];
+window.updateAllSoundVolumes = () => {
+    if (!game || !game.sound) return;
+    // Iterate over ALL sounds in the manager, not just playing ones.
+    // Re-derive category from the sound key directly to be safe against
+    // untagged sounds (e.g. added from other scenes before the interceptor ran).
+    game.sound.sounds.forEach(sound => {
+        const key = sound.key || '';
+        const isAmbient = _ambientKeys.includes(key) || sound._isAmbientCategory === true;
+        const multiplier = isAmbient ? window.GameSettings.ambientVolume : window.GameSettings.sfxVolume;
+        const baseVol = sound._originalBaseVolume !== undefined ? sound._originalBaseVolume : 1;
+        sound.setVolume(baseVol * multiplier);
+    });
+};
+
+// --- PREVENT SOUND ACCUMULATION WHEN TAB LOSES FOCUS ---
+// When the user switches away, mute Phaser. When they return, unmute.
+// This prevents the game loop from queuing up SFX bursts off-screen.
+window.addEventListener('blur', () => {
+    if (game && game.sound) {
+        game.sound.mute = true;
+        // Also pause the game loop physics to prevent other side-effects
+        // (Phaser handles this by default on blur if 'autoFocus' is on, but we ensure sound is muted)
+    }
+});
+window.addEventListener('focus', () => {
+    if (game && game.sound) {
+        game.sound.mute = false;
+    }
+});
+// Also handle the Page Visibility API for when tab is hidden (not just blurred)
+document.addEventListener('visibilitychange', () => {
+    if (!game || !game.sound) return;
+    game.sound.mute = document.hidden;
+});
+
 const game = new Phaser.Game(config);
 
 let player;
@@ -81,6 +152,7 @@ function preload() {
 
     // SkullBug Assets
     this.load.image('skullbug_walk_full', 'Asset/SkullBug/skullbug_walk_tilesheet.png');
+    this.load.image('skullbug_idle_full', 'Asset/SkullBug/skullbug_idle_tilesheet.png');
     this.load.image('skullbug_attack_full', 'Asset/SkullBug/skullbug_attack_tilesheet.png');
     this.load.image('skullbug_dead_full', 'Asset/SkullBug/skullbug_dead_tilesheet.png');
     this.load.image('skullbug_hurt_full', 'Asset/SkullBug/skullbug_hurt_tilesheet.png');
@@ -109,6 +181,8 @@ function preload() {
     this.load.image('key_item', 'Asset/Misc/key_item.png');
     this.load.image('key_ui', 'Asset/Misc/key_UI.png');
     this.load.image('reborn_place', 'Asset/Misc/reborn_place.png');
+    this.load.image('warrior_reborn_full', 'Asset/Warrior/warrior_reborn_tilesheet.png');
+    this.load.image('runes_full', 'Asset/Misc/runes_tilesheet.png');
 }
 
 function create() {
@@ -123,6 +197,7 @@ function create() {
     Chest.createAnimations(this);
     Trap.createAnimations(this);
     HoldingTrap.createAnimations(this);
+    Rune.createAnimations(this);
 
     // Create Reborn Place Animation
     if (this.textures.exists('reborn_place')) {
@@ -136,6 +211,24 @@ function create() {
             frames: this.anims.generateFrameNumbers('reborn_place_sheet', { start: 0, end: 3 }),
             frameRate: 6,
             repeat: 0
+        });
+    }
+
+    // --- SETUP VOLUME CONTROLS ---
+    const ambientSlider = document.getElementById('slider-ambient');
+    const sfxSlider = document.getElementById('slider-sfx');
+
+    if (ambientSlider) {
+        ambientSlider.addEventListener('input', (e) => {
+            window.GameSettings.ambientVolume = e.target.value / 100;
+            window.updateAllSoundVolumes();
+        });
+    }
+
+    if (sfxSlider) {
+        sfxSlider.addEventListener('input', (e) => {
+            window.GameSettings.sfxVolume = e.target.value / 100;
+            window.updateAllSoundVolumes();
         });
     }
 
@@ -154,6 +247,8 @@ function create() {
     this.dirtDecorations = this.add.group();
     this.wallSprites = this.add.group();   // Wall Sprite visuals (not zones)
     this.debugShapes = this.add.group();   // Debug rects from Wall.js
+    this.runes = this.physics.add.staticGroup(); // Tutorial rune objects
+    this.poundFxGroup = this.add.group(); // Track ground pound FX for rune destruction
 
     // 2. World Bounds
     this.cameras.main.setBounds(-1024, -1024, 2048, 2048);
@@ -206,6 +301,12 @@ function create() {
     // GENERATE LEVEL 1
     generateLevel(this);
     player.triggerSpawnEffect();
+
+    // Rune interaction: overlap for destruction, collider for solidity
+    this.physics.add.overlap(player, this.runes, (p, rune) => {
+        if (!p.isDead) rune.tryBreak(p);
+    });
+    this.physics.add.collider(player, this.runes);
 
     // Play Ambient Background Music
     this.bgMusic = this.sound.add('Ambient', { loop: true, volume: 0.4 });
@@ -352,8 +453,9 @@ function create() {
     */
 
     // --- PAUSE SYSTEM ---
-    this.input.keyboard.on('keydown-P', () => togglePause(this));
-    this.input.keyboard.on('keydown-ESC', () => togglePause(this));
+    // P and ESC to Pause, ENTER to Toggle (Pause/Unpause)
+    this.input.keyboard.on('keydown-P', () => { if (!isPaused) togglePause(this); });
+    this.input.keyboard.on('keydown-ESC', () => { if (isPaused) togglePause(this); });
     this.input.keyboard.on('keydown-ENTER', () => togglePause(this));
     this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
@@ -365,40 +467,7 @@ function create() {
         loadingScreen.style.display = 'none';
     }
 
-    // Initial Instruction (Fade In -> 3s -> Fade Out)
-    if (firstTimeStart && currentLevel === 0) {
-        this.introText = this.add.text(400, 300, 'PRESS ENTER', {
-            fontSize: '20px',
-            fontFamily: '"Press Start 2P"',
-            fill: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 6
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(300000).setAlpha(0);
-
-        this.introTween = this.tweens.add({
-            targets: this.introText,
-            alpha: 1,
-            duration: 800,
-            ease: 'Power2',
-            onComplete: () => {
-                this.time.delayedCall(2000, () => {
-                    if (this.introText && this.introText.active) {
-                        this.tweens.add({
-                            targets: this.introText,
-                            alpha: 0,
-                            duration: 600,
-                            ease: 'Power2',
-                            onComplete: () => {
-                                if (this.introText) this.introText.destroy();
-                                this.introText = null;
-                            }
-                        });
-                    }
-                });
-            }
-        });
-        firstTimeStart = false;
-    }
+    firstTimeStart = false;
 }
 
 // Item Definitions
@@ -427,16 +496,27 @@ function togglePause(scene) {
 
     isPaused = !isPaused;
 
+    const pauseUI = document.getElementById('pause-settings-ui');
     if (isPaused) {
         scene.physics.pause();
         scene.anims.pauseAll();
         scene.tweens.pauseAll();
         createPauseScreen(scene);
+
+        if (pauseUI) {
+            pauseUI.style.display = 'block';
+            // Sync sliders with current settings
+            const sAmbient = document.getElementById('slider-ambient');
+            const sSFX = document.getElementById('slider-sfx');
+            if (sAmbient) sAmbient.value = Math.round(window.GameSettings.ambientVolume * 100);
+            if (sSFX) sSFX.value = Math.round(window.GameSettings.sfxVolume * 100);
+        }
     } else {
         if (pauseContainer) {
             pauseContainer.destroy();
             pauseContainer = null;
         }
+        if (pauseUI) pauseUI.style.display = 'none';
         scene.physics.resume();
         scene.anims.resumeAll();
         scene.tweens.resumeAll();
@@ -450,12 +530,10 @@ function createPauseScreen(scene) {
 
     // 1. Dark Transparent Overlay
     const overlay = scene.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
-    overlay.setInteractive();
-    overlay.on('pointerdown', () => togglePause(scene));
     pauseContainer.add(overlay);
 
     // 2. Pause Title
-    const title = scene.add.text(width / 2, 120, 'GAME PAUSED', {
+    const title = scene.add.text(width / 2, 100, 'GAME PAUSED', {
         fontSize: '32px',
         fontFamily: '"Press Start 2P"',
         fill: '#ffd700',
@@ -476,7 +554,7 @@ function createPauseScreen(scene) {
         { key: 'E', action: 'INTERACT' }
     ];
 
-    const startY = 200;
+    const startY = 170;
     const spacing = 35;
 
     controls.forEach((item, i) => {
@@ -618,6 +696,13 @@ function update(time, delta) {
             const allObstacles = [this.obstacles, this.walls, this.innerWalls, this.interactables];
             this.enemies.getChildren().forEach(enemy => {
                 enemy.update(time, delta, player, allObstacles);
+            });
+        }
+
+        // Update Runes (for hint text and proximity-based destruction)
+        if (this.runes) {
+            this.runes.getChildren().forEach(rune => {
+                if (rune instanceof Rune) rune.update(player);
             });
         }
 
@@ -781,8 +866,8 @@ function generateLevel(scene) {
     // Se o nível atual tem walls manuais definidas no LevelManifest (ex: exportadas do MapManager),
     // pule a geração procedural de bordas - as paredes serão criadas pela seção de 'Manual Walls' abaixo.
     const hasManualWalls = currentLevelData && !currentLevelData.isProcedural &&
-        ((currentLevelData.walls && currentLevelData.walls.length > 0) ||
-            (currentLevelData.visualTiles && currentLevelData.visualTiles.length > 0));
+        ((currentLevelData.walls && (Array.isArray(currentLevelData.walls) ? currentLevelData.walls.length > 0 : Object.keys(currentLevelData.walls).length > 0)) ||
+            (currentLevelData.visualTiles && (Array.isArray(currentLevelData.visualTiles) ? currentLevelData.visualTiles.length > 0 : Object.keys(currentLevelData.visualTiles).length > 0)));
 
     if (!hasManualWalls) {
         if (currentLevel === 0) {
@@ -1159,6 +1244,14 @@ function generateLevel(scene) {
                 } else if (i.type === 'door') {
                     scene.interactables.add(new Door(scene, i.x, i.y, i.extra)); // extra could be { keyRequired: '...' }
                 }
+            });
+        }
+
+        // Runes (tutorial rune stones)
+        if (currentLevelData.runes) {
+            currentLevelData.runes.forEach(r => {
+                const rune = new Rune(scene, r.x, r.y, r.frame !== undefined ? r.frame : 0);
+                scene.runes.add(rune);
             });
         }
 
@@ -1591,6 +1684,7 @@ function nextLevel(scene, targetLevelIndex = undefined) {
     scene.traps.clear(true, true);
     scene.holdingTraps.clear(true, true);
     scene.portals.clear(true, true);
+    scene.runes.clear(true, true);
     scene.dirtDecorations.clear(true, true);
     scene.wallSprites.clear(false, false);  // Wall objects already destroyed by walls.clear above — only remove refs
     scene.debugShapes.clear(true, true);

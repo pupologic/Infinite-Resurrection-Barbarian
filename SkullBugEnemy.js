@@ -1,6 +1,7 @@
 class SkullBugEnemy extends Enemy {
     static createAnimations(scene) {
         const walkTexture = scene.textures.get('skullbug_walk_full');
+        const idleTexture = scene.textures.get('skullbug_idle_full');
         const attackTexture = scene.textures.get('skullbug_attack_full');
         const deadTexture = scene.textures.get('skullbug_dead_full');
         const hurtTexture = scene.textures.get('skullbug_hurt_full');
@@ -9,6 +10,8 @@ class SkullBugEnemy extends Enemy {
         // Except hurt which is usually 1x3 or similar for 3 rows
         const walkFW = walkTexture.source[0].width / 8;
         const walkFH = walkTexture.source[0].height / 8;
+        const idleFW = idleTexture.source[0].width / 8;
+        const idleFH = idleTexture.source[0].height / 8;
         const attackFW = attackTexture.source[0].width / 8;
         const attackFH = attackTexture.source[0].height / 8;
         const deadFW = deadTexture.source[0].width / 8;
@@ -20,6 +23,7 @@ class SkullBugEnemy extends Enemy {
         const hurtFH = hurtTexture.source[0].height / 3;
 
         scene.textures.addSpriteSheet('skullbug_walk', walkTexture.source[0].image, { frameWidth: walkFW, frameHeight: walkFH });
+        scene.textures.addSpriteSheet('skullbug_idle', idleTexture.source[0].image, { frameWidth: idleFW, frameHeight: idleFH });
         scene.textures.addSpriteSheet('skullbug_attack', attackTexture.source[0].image, { frameWidth: attackFW, frameHeight: attackFH });
         scene.textures.addSpriteSheet('skullbug_dead', deadTexture.source[0].image, { frameWidth: deadFW, frameHeight: deadFH });
         scene.textures.addSpriteSheet('skullbug_hurt', hurtTexture.source[0].image, { frameWidth: hurtFW, frameHeight: hurtFH });
@@ -32,11 +36,11 @@ class SkullBugEnemy extends Enemy {
                 frames: scene.anims.generateFrameNumbers('skullbug_walk', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
                 frameRate: 15, repeat: -1
             });
-            // Idle (using walk frames)
+            // Idle
             scene.anims.create({
                 key: `skullbug-idle-${dir}`,
-                frames: scene.anims.generateFrameNumbers('skullbug_walk', { start: rowIndex * 8, end: rowIndex * 8 }),
-                frameRate: 1, repeat: -1
+                frames: scene.anims.generateFrameNumbers('skullbug_idle', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
+                frameRate: 10, repeat: -1
             });
             // Attack animation
             scene.anims.create({

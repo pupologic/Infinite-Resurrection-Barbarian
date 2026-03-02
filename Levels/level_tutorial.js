@@ -1,4 +1,4 @@
-window.LevelManifest[0] = {
+window.LevelManifest[1] = {
   "isProcedural": false,
   "groundBounds": {
     "startX": -800,

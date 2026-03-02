@@ -8,16 +8,28 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
+        /* Full-screen black stage */
+        html,
         body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
             background-color: #0d0d0d;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            overflow: hidden;
             font-family: 'Press Start 2P', cursive;
             image-rendering: pixelated;
+        }
+
+        /* Single scale wrapper — everything lives here at fixed base size */
+        #scale-root {
+            position: absolute;
+            width: 1320px;
+            height: 680px;
+            transform-origin: top left;
+            overflow: hidden;
+            /* needed for fill/cover mode to crop edges cleanly */
+            /* JS will set transform: scale() and left/top to center it */
         }
 
         /* Utils for pixel art borders using box-shadow to simulate thickness without blurring */
@@ -37,14 +49,12 @@
 
         #ui-wrapper {
             background-color: #130e07;
-            /* Dark Brown Base - Solid */
-            /* Dark texture using only solid colors */
             padding: 40px;
             display: flex;
             gap: 24px;
             align-items: center;
-            /* Center horizontally aligned sidebars */
             box-shadow: 0 0 100px rgba(0, 0, 0, 1);
+            /* transform:scale(0.8) is applied via JS only after game starts */
         }
 
         /* Shared Panel Style */
@@ -72,7 +82,7 @@
 
         /* LEFT SIDEBAR - Character & Stats */
         #status-sidebar {
-            width: 240px;
+            width: 192px;
             height: 600px;
             /* Matched to Inventory */
             padding: 20px;
@@ -202,12 +212,15 @@
         #game-container {
             /* Inherits retro-panel styles */
             display: block;
-            /* Ensure visibility for panel border */
+            width: 800px;
+            height: 600px;
+            /* box-sizing: content-box (default) so border adds outside, making all 4 borders visible */
+            flex-shrink: 0;
         }
 
         /* RIGHT SIDEBAR - Inventory */
         #inventory-sidebar {
-            width: 240px;
+            width: 192px;
             height: 600px;
             padding: 20px;
             box-sizing: border-box;
@@ -231,15 +244,17 @@
         .backpack-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
+            grid-template-rows: repeat(5, 1fr);
+            gap: 8px;
             width: 100%;
-            /* Removed background and border as requested */
-            padding: 5px 0;
+            flex: 1;
+            /* fill all remaining height after title */
+            padding: 0;
         }
 
         .inventory-slot {
-            width: 80px;
-            height: 80px;
+            width: 100%;
+            height: 100%;
             background-color: #1a100d;
             border: 2px solid #5d4037;
             display: flex;
@@ -249,6 +264,7 @@
             position: relative;
             box-shadow: inset 0 0 10px #000;
             image-rendering: pixelated;
+            box-sizing: border-box;
         }
 
         /* Slot hover effect */
@@ -266,8 +282,8 @@
         }
 
         .inventory-icon img {
-            max-width: 60px;
-            max-height: 60px;
+            max-width: 50px;
+            max-height: 50px;
             object-fit: contain;
             image-rendering: pixelated;
             filter: drop-shadow(2px 2px 0 #000);
@@ -291,6 +307,79 @@
             display: block;
             image-rendering: pixelated;
         }
+
+        /* Volume Settings Styles for Pause Menu */
+        #pause-settings-ui {
+            position: absolute;
+            left: 50%;
+            top: 450px;
+            /* Reduced gap from controls list */
+            transform: translateX(-50%);
+            z-index: 200001;
+            width: 500px;
+            /* Wider for side-by-side */
+            pointer-events: all;
+        }
+
+        .settings-container {
+            padding: 25px 10px 5px 10px;
+            /* Increased top padding to separate from line */
+            background: none;
+            border-top: 2px solid #ffffff;
+            /* Solid white separator */
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+        }
+
+        .volume-control {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .volume-control label {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 10px;
+            /* Increased font size */
+            color: #ffd700;
+            /* Keeping yellow for parity with title */
+            display: block;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .range-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 10px;
+            background: #111;
+            border: 2px solid #000;
+            outline: none;
+            box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.8);
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #ffffff;
+            /* White handle */
+            cursor: pointer;
+            border: 2px solid #000;
+        }
+
+        .range-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #ffffff;
+            /* White handle */
+            cursor: pointer;
+            border: 2px solid #000;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.0/dist/phaser.min.js"></script>
     <script src="Player.js"></script>
@@ -306,6 +395,7 @@
     <script src="Trap.js"></script>
     <script src="HoldingTrap.js"></script>
     <script src="Portal.js"></script>
+    <script src="Rune.js"></script>
     <script src="LevelData.js"></script>
     <script src="Levels/level_tutorial.js"></script>
     <script src="Levels/level_1.js"></script>
@@ -315,109 +405,137 @@
 </head>
 
 <body>
-    <div id="ui-wrapper">
-        <div id="status-sidebar" class="retro-panel">
-            <div class="profile-section">
-                <div class="profile-img base" id="player-profile-img"></div>
-            </div>
+    <!-- Single scale root: all game HTML lives here, scaled as a unit -->
+    <div id="scale-root">
+        <div id="ui-wrapper">
+            <div id="status-sidebar" class="retro-panel">
+                <div class="profile-section">
+                    <div class="profile-img base" id="player-profile-img"></div>
+                </div>
 
-            <div class="status-bar-container">
-                <div class="status-label">Health</div>
-                <div class="bar-bg">
-                    <div class="bar-fill health" id="bar-health" style="width: 100%;"></div>
-                    <div class="health-text" id="text-health">100/100</div>
+                <div class="status-bar-container">
+                    <div class="status-label">Health</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill health" id="bar-health" style="width: 100%;"></div>
+                        <div class="health-text" id="text-health">100/100</div>
+                    </div>
+                </div>
+
+                <div class="status-bar-container">
+                    <div class="status-label">Stamina</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill stamina" id="bar-stamina" style="width: 100%;"></div>
+                        <div class="health-text" id="text-stamina">50/50</div>
+                    </div>
+                </div>
+
+                <!-- Cooldown Bars -->
+                <div class="status-bar-container">
+                    <div class="status-label">Jump Kick</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill ready" id="bar-kick" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <div class="status-bar-container">
+                    <div class="status-label">Ground Dash</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill ready" id="bar-dash" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <div class="status-bar-container">
+                    <div class="status-label">Roar</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill ready" id="bar-roar" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <div class="status-bar-container">
+                    <div class="status-label">Ground Pound</div>
+                    <div class="bar-bg">
+                        <div class="bar-fill ready" id="bar-pound" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+            </div>
+            <div id="game-container" class="retro-panel">
+                <!-- Pause Volume Overlay -->
+                <div id="pause-settings-ui" style="display: none;">
+                    <div class="settings-container">
+                        <div class="volume-control">
+                            <label>Ambient Volume</label>
+                            <input type="range" min="0" max="100" value="40" class="range-slider" id="slider-ambient">
+                        </div>
+                        <div class="volume-control">
+                            <label>SFX Volume</label>
+                            <input type="range" min="0" max="100" value="60" class="range-slider" id="slider-sfx">
+                        </div>
+                    </div>
                 </div>
             </div>
+            <div id="inventory-sidebar" class="retro-panel">
+                <h3
+                    style="text-align: center; border-bottom: 2px solid #3e2723; padding-bottom: 10px; margin-bottom: 0;">
+                    BACKPACK
+                </h3>
 
-            <div class="status-bar-container">
-                <div class="status-label">Stamina</div>
-                <div class="bar-bg">
-                    <div class="bar-fill stamina" id="bar-stamina" style="width: 100%;"></div>
-                    <div class="health-text" id="text-stamina">50/50</div>
-                </div>
-            </div>
-
-            <!-- Cooldown Bars -->
-            <div class="status-bar-container">
-                <div class="status-label">Jump Kick</div>
-                <div class="bar-bg">
-                    <div class="bar-fill ready" id="bar-kick" style="width: 100%;"></div>
-                </div>
-            </div>
-
-            <div class="status-bar-container">
-                <div class="status-label">Ground Dash</div>
-                <div class="bar-bg">
-                    <div class="bar-fill ready" id="bar-dash" style="width: 100%;"></div>
-                </div>
-            </div>
-
-            <div class="status-bar-container">
-                <div class="status-label">Roar</div>
-                <div class="bar-bg">
-                    <div class="bar-fill ready" id="bar-roar" style="width: 100%;"></div>
-                </div>
-            </div>
-
-            <div class="status-bar-container">
-                <div class="status-label">Ground Pound</div>
-                <div class="bar-bg">
-                    <div class="bar-fill ready" id="bar-pound" style="width: 100%;"></div>
+                <div class="backpack-grid" id="backpack-grid">
+                    <!-- 10 Generic Slots -->
+                    <div class="inventory-slot empty" id="slot-0"></div>
+                    <div class="inventory-slot empty" id="slot-1"></div>
+                    <div class="inventory-slot empty" id="slot-2"></div>
+                    <div class="inventory-slot empty" id="slot-3"></div>
+                    <div class="inventory-slot empty" id="slot-4"></div>
+                    <div class="inventory-slot empty" id="slot-5"></div>
+                    <div class="inventory-slot empty" id="slot-6"></div>
+                    <div class="inventory-slot empty" id="slot-7"></div>
+                    <div class="inventory-slot empty" id="slot-8"></div>
+                    <div class="inventory-slot empty" id="slot-9"></div>
                 </div>
             </div>
         </div>
-        <div id="game-container" class="retro-panel"></div>
-        <div id="inventory-sidebar" class="retro-panel">
-            <h3 style="text-align: center; border-bottom: 2px solid #3e2723; padding-bottom: 10px; margin-bottom: 0;">
-                BACKPACK
-            </h3>
 
-            <div class="backpack-grid" id="backpack-grid">
-                <!-- 10 Generic Slots -->
-                <div class="inventory-slot empty" id="slot-0"></div>
-                <div class="inventory-slot empty" id="slot-1"></div>
-                <div class="inventory-slot empty" id="slot-2"></div>
-                <div class="inventory-slot empty" id="slot-3"></div>
-                <div class="inventory-slot empty" id="slot-4"></div>
-                <div class="inventory-slot empty" id="slot-5"></div>
-                <div class="inventory-slot empty" id="slot-6"></div>
-                <div class="inventory-slot empty" id="slot-7"></div>
-                <div class="inventory-slot empty" id="slot-8"></div>
-                <div class="inventory-slot empty" id="slot-9"></div>
+        <!-- Loading Screen -->
+        <div id="loading-screen">
+            <div class="loading-text">LOADING...</div>
+        </div>
+
+        <!-- Click to Start Screen -->
+        <div id="click-to-start-screen" style="display: none;">
+            <div class="click-to-start-text">CLICK TO START</div>
+        </div>
+
+        <!-- Start Menu -->
+        <div id="start-menu">
+            <div class="menu-content">
+                <img src="Asset/UI/Logo.png" class="logo" alt="Ultimate Resurrection Warrior">
+                <button id="start-btn">
+                    <img src="Asset/UI/button_Start.png" alt="START GAME">
+                </button>
             </div>
         </div>
-    </div>
-
-    <!-- Loading Screen -->
-    <div id="loading-screen">
-        <div class="loading-text">LOADING...</div>
-    </div>
-
-    <!-- Start Menu -->
-    <div id="start-menu">
-        <div class="menu-content">
-            <img src="Asset/UI/Logo.png" class="logo" alt="Ultimate Resurrection Warrior">
-            <button id="start-btn">
-                <img src="Asset/UI/button_Start.png" alt="START GAME">
-            </button>
-        </div>
-    </div>
+    </div><!-- /#scale-root -->
 
     <style>
         /* Overlay Styles */
+        /* Overlays: absolute inside #scale-root, same base dimensions */
         #loading-screen,
-        #start-menu {
-            position: fixed;
+        #start-menu,
+        #click-to-start-screen {
+            position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 90vh;
+            width: 1320px;
+            height: 680px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 1000;
             background-color: #0d0d0d;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         /* Loading specific */
@@ -445,18 +563,40 @@
 
         /* Start Menu specific */
         #start-menu {
-            /* background-image removed to show Phaser Scene behind */
             background-color: transparent;
-            /* background-size: cover; */
-            /* background-position: center; */
-            /* background-repeat: no-repeat; */
             background-repeat: no-repeat;
             align-items: flex-start;
-            /* Move the content block to the left */
             padding-left: 10%;
-            /* Offset from the left edge */
             display: none;
-            /* Hidden by default, shown via JS */
+        }
+
+        #click-to-start-screen {
+            background-color: #0d0d0d;
+            /* Keep screen black after loading */
+            cursor: pointer;
+            z-index: 1001;
+            /* Above loading screen */
+        }
+
+        .click-to-start-text {
+            color: #fff;
+            font-size: 16px;
+            letter-spacing: 2px;
+            animation: blink-text 1s infinite;
+            text-shadow: 2px 2px #000;
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        @keyframes blink-text {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
         }
 
         .menu-content {
@@ -467,10 +607,9 @@
         }
 
         #start-menu .logo {
-            width: 600px;
-            /* Increased size */
+            width: 450px;
             height: auto;
-            margin-bottom: 60px;
+            margin-bottom: 35px;
             image-rendering: pixelated;
         }
 
@@ -479,14 +618,14 @@
             border: none;
             padding: 0;
             margin: 0;
+            margin-bottom: 55px;
             cursor: pointer;
             transition: transform 0.1s;
             outline: none;
         }
 
         #start-btn img {
-            width: 300px;
-            /* Adjust size as needed */
+            width: 250px;
             height: auto;
             image-rendering: pixelated;
             display: block;
@@ -500,6 +639,43 @@
             transform: scale(0.95);
         }
     </style>
+
+    <script>
+        // Responsive scale wrapper — supports two modes:
+        //   FILL (cover)   → Math.max: fills screen, no black bars, slight crop at edges
+        //   CONTAIN        → Math.min: no crop, may have black bars (used during gameplay)
+        (function () {
+            const BASE_W = 1320, BASE_H = 680;
+            let fillMode = true; // Start in fill mode for the start screen
+
+            function scaleGame() {
+                const scaleX = window.innerWidth / BASE_W;
+                const scaleY = window.innerHeight / BASE_H;
+                const scale = fillMode ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+                const root = document.getElementById('scale-root');
+                if (!root) return;
+                root.style.transform = 'scale(' + scale + ')';
+                root.style.left = Math.round((window.innerWidth - BASE_W * scale) / 2) + 'px';
+                root.style.top = Math.round((window.innerHeight - BASE_H * scale) / 2) + 'px';
+            }
+
+            // Fill mode: start screen fills the window completely (no black bars)
+            window.scaleGameFill = function () {
+                fillMode = true;
+                scaleGame();
+            };
+
+            // Contain mode: gameplay fits within window, preserving aspect ratio
+            window.scaleGameContain = function () {
+                fillMode = false;
+                scaleGame();
+            };
+
+            window.addEventListener('resize', scaleGame);
+            scaleGame();
+            document.addEventListener('DOMContentLoaded', scaleGame);
+        })();
+    </script>
 </body>
 
 </html>
