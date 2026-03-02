@@ -21,4 +21,3 @@ This is a Phaser-based game where you explore dungeons, fight enemies, and progr
 To play online, visit the [GitHub Pages](https://pupologic.github.io/Infinite-Resurrection-Barbarian/) link.
 
 ---
-Developed as part of the Vibe Code project.
