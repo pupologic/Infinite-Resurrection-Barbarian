@@ -15,7 +15,7 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
     // Hint texts for each rune (what button/action to use)
     static HINT_TEXTS = [
         "SHIFT PARA DESLIZAR",      // 0 — Dash
-        "SPACE E BATAPARA CHUTAR",      // 1 — Jump Kick
+        "SPACE E BATA PARA CHUTAR",      // 1 — Jump Kick
         "CLICK OU J PARA BATER", // 2 — Punch
         "Q PARA DERRUBAR",           // 3 — Ground Pound
         "R PARA RUGIR",           // 4 — Roar
