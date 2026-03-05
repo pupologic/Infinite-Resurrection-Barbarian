@@ -279,6 +279,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.roarCooldown = 20000;
         this.roarTimer = 0;
         this.roarRadius = 300;
+        this.roarCurrentRadius = 0;
 
         // Ground Pound Ability
         this.poundCooldown = 14000;
@@ -835,6 +836,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             this.isHurt = true;
             this.setTint(0xff0000);
             this.scene.cameras.main.shake(100, 0.005);
+            this.actionLockTimer = 250; // Lock actions briefly to ensure hurt animation shows
         } else {
             // Defending: no isHurt flag (so no hurt animation)
             this.setTint(0xffaaaa); // Lighter red
@@ -844,7 +846,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.isAttacking = false;
         this.graceCounter = 0;
 
-        this.scene.time.delayedCall(100, () => {
+        this.scene.time.delayedCall(250, () => {
             if (this.active && !this.isDead) {
                 this.clearTint();
                 this.isHurt = false;
@@ -1104,6 +1106,9 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             case 'strength':
                 this.applyStrengthBoost(5000);
                 return true;
+            case 'torch':
+                triggerTorchBoost(this.scene);
+                return true;
             default:
                 return false;
         }
@@ -1176,28 +1181,39 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
     applyRoarDamage() {
         console.log("ROAR ACTIVATED!");
+        this.roarCurrentRadius = 10;
 
         // Visual Effect
         const circle = this.scene.add.circle(this.x, this.y, 10, 0xffffff, 0.5);
         this.scene.tweens.add({
             targets: circle,
-            scale: { from: 1, to: this.roarRadius / 10 }, // Scale to radius
+            scale: { from: 1, to: this.roarRadius / 10 }, // Scale to radius (e.g., 300/10 = 30)
             alpha: { from: 0.5, to: 0 },
             duration: 500,
-            onComplete: () => circle.destroy()
-        });
+            onUpdate: (tween, target) => {
+                // Update the current radius for other scripts (like Runes) to check
+                // target.radius is the base radius (10), we multiply by current scale
+                this.roarCurrentRadius = target.radius * target.scale;
 
-        // Apply Effect
-        if (this.scene.enemies) {
-            this.scene.enemies.getChildren().forEach(enemy => {
-                if (!enemy.active || enemy.isDead) return;
-
-                const dist = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
-                if (dist <= this.roarRadius) {
-                    enemy.paralyze(5000);
+                // Optionally apply paralysis to enemies as the curve expands
+                if (this.scene.enemies) {
+                    this.scene.enemies.getChildren().forEach(enemy => {
+                        if (!enemy.active || enemy.isDead || enemy._roarHit) return;
+                        const dist = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
+                        if (dist <= this.roarCurrentRadius) {
+                            enemy.paralyze(5000);
+                            enemy._roarHit = true; // Mark to avoid multi-hitting in the same roar
+                            // Clear the flag after a short delay or when roar ends
+                            this.scene.time.delayedCall(600, () => { enemy._roarHit = false; });
+                        }
+                    });
                 }
-            });
-        }
+            },
+            onComplete: () => {
+                circle.destroy();
+                this.roarCurrentRadius = 0;
+            }
+        });
 
         // Camera Shake
         this.scene.cameras.main.shake(200, 0.01);

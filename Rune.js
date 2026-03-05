@@ -15,7 +15,7 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
     // Hint texts for each rune (what button/action to use)
     static HINT_TEXTS = [
         "SHIFT PARA DESLIZAR",      // 0 — Dash
-        "SPACE E BATAPARA CHUTAR",      // 1 — Jump Kick
+        "BARRA DE ESPAÇO + BATER PARA CHUTAR",      // 1 — Jump Kick
         "CLICK OU J PARA BATER", // 2 — Punch
         "Q PARA DERRUBAR",           // 3 — Ground Pound
         "R PARA RUGIR",           // 4 — Roar
@@ -66,14 +66,18 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
         this.body.setOffset(offX, offY);
 
         // Create Hint Text (initially invisible)
+        // Truque de nitidez: renderizar em 2× e reduzir com setScale(0.5)
+        // O canvas interno do Phaser rasteriza a fonte grande (nítida) e depois reduzimos.
+        // Escalar para CIMA (como o CSS faz) borra; escalar para BAIXO preserva nitidez.
         this.hintText = scene.add.text(x, y - 50, Rune.HINT_TEXTS[this.frameIndex], {
             fontFamily: '"Press Start 2P"',
-            fontSize: '12px',
+            fontSize: '28px',        // 2× o visual desejado (14px visual)
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: 3,
-            align: 'center'
-        }).setOrigin(0.5).setDepth(y + 100).setAlpha(0);
+            strokeThickness: 16,      // 2× proporcional ao font size
+            align: 'center',
+            resolution: 2            // forçar resolução double no canvas do texto
+        }).setOrigin(0.5).setScale(0.5).setDepth(y + 100).setAlpha(0);
     }
 
     /**
@@ -108,13 +112,21 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
                 });
             }
         } else {
-            // Roar (4) has a larger AOE, others are closer
-            let breakRange = 60;
-            if (this.frameIndex === 4) breakRange = 120;
-
-            if (dist <= breakRange) {
-                if (this.abilityCheck(player)) {
-                    this.tryBreak(player);
+            // General rule: check for correct ability and distance
+            if (this.frameIndex === 4) {
+                // ROAR: Special check for the expanding wave radius from Player.js
+                if (player.roarCurrentRadius > 0 && dist <= player.roarCurrentRadius) {
+                    if (this.abilityCheck(player)) {
+                        this.tryBreak(player);
+                    }
+                }
+            } else {
+                // Others: Dash, Jump Kick, Punch, Shield (close range check)
+                let breakRange = 60;
+                if (dist <= breakRange) {
+                    if (this.abilityCheck(player)) {
+                        this.tryBreak(player);
+                    }
                 }
             }
         }

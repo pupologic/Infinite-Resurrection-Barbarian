@@ -112,6 +112,9 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.shadow.setDepth(-19997); // Above reborn place (-19998)
         this.shadow.resetPipeline(); // Shadows should not use Light2D pipeline
         this.forcedLoot = null;
+
+        // Default Damage Popup Color (DemonBull: Red)
+        this.damageColor = '#ff0000';
     }
 
     checkLineOfSight(player, obstacles) {
@@ -537,7 +540,7 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.hp -= amount;
 
         if (this.scene.showDamagePopup) {
-            this.scene.showDamagePopup(amount, this.x, this.y, '#ffffff'); // White text for enemy damage
+            this.scene.showDamagePopup(amount, this.x, this.y, this.damageColor || '#ffffff');
         }
 
         if (this.hp <= 0) {

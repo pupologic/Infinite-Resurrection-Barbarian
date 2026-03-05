@@ -64,6 +64,7 @@ class SkeletonEnemy extends Enemy {
         this.maxHp = 20;
         this.speed = 55;
         this.damage = 3;
+        this.damageColor = '#00ff00';
 
         // Visual adjustment for skeleton
         this.body.setCircle(18, 32, 40);

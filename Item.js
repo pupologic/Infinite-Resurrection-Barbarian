@@ -15,6 +15,7 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         if (type === 'STRENGTH') key = 'force_item';
         if (type === 'SPEED') key = 'speed_item';
         if (type === 'KEY') key = 'key_item';
+        if (type === 'TORCH') key = 'torch_item';
 
         if (!scene.textures.exists(key)) {
             // Procedural fallback only for truly missing textures (should rarely happen now)

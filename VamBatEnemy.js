@@ -57,6 +57,7 @@ class VamBatEnemy extends Enemy {
         super(scene, x, y, 'vambat_walk', shadowWidth, shadowHeight, shadowYOffset);
 
         this.animPrefix = 'vambat';
+        this.damageColor = '#ff0000';
         this.hp = 12;
         this.maxHp = 12;
         this.speed = 90;
@@ -266,7 +267,7 @@ class VamBatEnemy extends Enemy {
 
         this.hp -= amount;
         if (this.scene.showDamagePopup) {
-            this.scene.showDamagePopup(amount, this.x, this.y, '#ffffff');
+            this.scene.showDamagePopup(amount, this.x, this.y, this.damageColor);
         }
 
         if (this.hp <= 0) {

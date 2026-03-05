@@ -68,6 +68,7 @@ class RangedEnemy extends Enemy {
         super(scene, x, y, 'demonImp_walk', 40, 25); // Smaller shadow for Imp
 
         this.animPrefix = 'demonImp';
+        this.damageColor = '#ffa500';
 
         this.hp = 15;
         this.maxHp = 15;

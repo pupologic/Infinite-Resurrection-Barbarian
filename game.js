@@ -17,7 +17,14 @@ const config = {
         create: create,
         update: update
     }],
-    pixelArt: true
+    pixelArt: true,
+    // Garantia extra: forçar nearest-neighbor no renderer WebGL/Canvas
+    render: {
+        antialias: false,
+        antialiasGL: false,
+        roundPixels: true,
+        pixelArt: true
+    }
 };
 
 // --- GLOBAL GAME & VOLUME SETTINGS ---
@@ -210,6 +217,8 @@ function preload() {
     this.load.image('speed_ui', 'Asset/Misc/speed_UI.png');
     this.load.image('key_item', 'Asset/Misc/key_item.png');
     this.load.image('key_ui', 'Asset/Misc/key_UI.png');
+    this.load.image('torch_item', 'Asset/Misc/torch_item.png');
+    this.load.image('torch_ui', 'Asset/Misc/torch_UI.png');
     this.load.image('reborn_place', 'Asset/Misc/reborn_place.png');
     this.load.image('warrior_reborn_full', 'Asset/Warrior/warrior_reborn_tilesheet.png');
     this.load.image('runes_full', 'Asset/Misc/runes_tilesheet.png');
@@ -494,6 +503,11 @@ function create() {
                     updateInventoryUI('key', p.keys.length);
                     this.showPopup(`Got Key: ${item.extra.keyId || 'Key'}!`, p.x, p.y - 50);
                     break;
+                case 'TORCH':
+                    p.inventory.torch = (p.inventory.torch || 0) + 1;
+                    updateInventoryUI('torch', p.inventory.torch);
+                    this.showPopup("Tocha coletada!", p.x, p.y - 50);
+                    break;
             }
             p.triggerPickupExpression();
             this.sound.play('Item');
@@ -515,13 +529,15 @@ function create() {
 
     // Floating Text Popup Helper
     this.showDamagePopup = (amount, x, y, color = '#ff0000') => {
-        let text = this.add.text(x, y, `-${amount}`, {
-            fontSize: '10px',
-            fontFamily: '"Press Start 2P"', // Assuming this font is loaded, otherwise defaults
+        // Renderizar em 2× e reduzir com setScale(0.5) para texto nítido
+        let text = this.add.text(x, y, `${amount}`, {
+            fontSize: '20px',          // 2× de 10px visual
+            fontFamily: '"Press Start 2P"',
             fill: color,
             stroke: '#000000',
-            strokeThickness: 2
-        }).setOrigin(0.5);
+            strokeThickness: 4,        // 2× proporcional
+            resolution: 2
+        }).setOrigin(0.5).setScale(0.5);
         text.setDepth(99999);
 
         this.tweens.add({
@@ -534,14 +550,17 @@ function create() {
     };
 
     this.showPopup = (text, x, y) => {
+        // Renderizar em 2× e reduzir com setScale(0.5) para texto nítido
         let t = this.add.text(x, y, text, {
-            fontSize: '16px',
+            fontSize: '32px',          // 2× de 16px visual
+            fontFamily: '"Press Start 2P"',
             color: '#fff',
             stroke: '#000',
-            strokeThickness: 3,
-            align: 'center'
-        }).setOrigin(0.5);
-        t.setDepth(100000); // Ensure it's above everything
+            strokeThickness: 6,        // 2× proporcional
+            align: 'center',
+            resolution: 2
+        }).setOrigin(0.5).setScale(0.5);
+        t.setDepth(100000);
         this.tweens.add({
             targets: t, y: y - 50, alpha: 0, duration: 1500, onComplete: () => t.destroy()
         });
@@ -624,8 +643,62 @@ const ITEM_METADATA = {
     strength: { icon: '<img src="Asset/Misc/force_UI.png" title="Strength Potion">', title: 'Strength Potion', usable: true },
     stamina: { icon: '<img src="Asset/Misc/stamina_UI.png" title="Stamina Potion">', title: 'Stamina Potion', usable: true },
     coin: { icon: '<img src="Asset/Misc/coin_UI.png" title="Coins">', title: 'Coins', usable: false },
-    key: { icon: '<img src="Asset/Misc/key_UI.png" title="Keys">', title: 'Keys', usable: false }
+    key: { icon: '<img src="Asset/Misc/key_UI.png" title="Keys">', title: 'Keys', usable: false },
+    torch: {
+        icon: '<img src="Asset/Misc/torch_UI.png" title="Torch">',
+        title: 'Torch',
+        usable: true,        // Agora pode ser usada pela mochila
+        consumeOnPickup: false // Entra na mochila primeiro
+    }
 };
+
+// --- SISTEMA DE TOCHA ---
+function triggerTorchBoost(scene) {
+    if (!scene.playerLightRadius) scene.playerLightRadius = 5;
+
+    // Se já tiver uma tocha ativa, o usuário pode pedir para não resetar ou apenas avisar.
+    // Por simplicidade, vamos permitir apenas uma ativa por vez (limpa o HUD anterior)
+    const TORCH_DURATION = 30000;
+    const TORCH_EXTRA_TILES = 5;
+    scene.setLightBoost(TORCH_EXTRA_TILES, TORCH_DURATION);
+    scene.showPopup('Tocha acesa! (+30s)', player.x, player.y - 50);
+
+    // Salvar o timer ID na cena para limpeza se necessário
+    if (scene._torchInterval) clearInterval(scene._torchInterval);
+
+    // UI de contador da tocha (HUD no canto inferior da sidebar)
+    let torchHUD = document.getElementById('torch-hud');
+    if (!torchHUD) {
+        torchHUD = document.createElement('div');
+        torchHUD.id = 'torch-hud';
+        torchHUD.style.cssText = [
+            'position:absolute', 'bottom:12px', 'right:12px',
+            'display:flex', 'align-items:center', 'gap:6px',
+            'background:rgba(0,0,0,0.7)', 'border:2px solid #b8860b',
+            'padding:4px 10px', 'border-radius:4px',
+            'font-family:"Press Start 2P",monospace', 'font-size:10px',
+            'color:#ffd700', 'z-index:9999', 'pointer-events:none'
+        ].join(';');
+        const sidebar = document.getElementById('inventory-sidebar') || document.body;
+        sidebar.style.position = 'relative';
+        sidebar.appendChild(torchHUD);
+    }
+
+    torchHUD.innerHTML = '<img src="Asset/Misc/torch_UI.png" style="height:20px;image-rendering:pixelated;"> <span id="torch-timer">30s</span>';
+
+    let remaining = TORCH_DURATION / 1000;
+    scene._torchInterval = setInterval(() => {
+        remaining--;
+        const timerEl = document.getElementById('torch-timer');
+        if (timerEl) timerEl.textContent = remaining + 's';
+
+        if (remaining <= 0) {
+            clearInterval(scene._torchInterval);
+            scene._torchInterval = null;
+            if (torchHUD.parentNode) torchHUD.parentNode.removeChild(torchHUD);
+        }
+    }, 1000);
+}
 
 // --- PAUSE LOGIC ---
 function togglePause(scene) {
@@ -1578,6 +1651,13 @@ function nextLevel(scene, targetLevelIndex = undefined) {
     scene.dirtDecorations.clear(true, true);
     scene.wallSprites.clear(false, false);  // Wall objects already destroyed by walls.clear above — only remove refs
     scene.debugShapes.clear(true, true);
+
+    if (scene._torchInterval) {
+        clearInterval(scene._torchInterval);
+        scene._torchInterval = null;
+        const torchHUD = document.getElementById('torch-hud');
+        if (torchHUD && torchHUD.parentNode) torchHUD.parentNode.removeChild(torchHUD);
+    }
 
     // Force Phaser physics debug renderer to clear stale body outlines
     if (scene.physics.world.debugGraphic) {

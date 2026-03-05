@@ -78,6 +78,7 @@ class SkullBugEnemy extends Enemy {
         this.maxHp = 10;
         this.speed = 130;  // High speed
         this.damage = 2;   // Low damage
+        this.damageColor = '#00ff00';
 
         // Vision and interaction ranges
         this.baseVisionRange = 250; // Reduzido para não seguir de tão longe

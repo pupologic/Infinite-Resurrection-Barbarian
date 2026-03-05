@@ -21,6 +21,16 @@
             image-rendering: pixelated;
         }
 
+        /* Forçar nearest-neighbor no canvas do Phaser quando escalonado via CSS */
+        canvas {
+            image-rendering: pixelated;
+            /* Chrome, Edge, Opera */
+            image-rendering: crisp-edges;
+            /* Firefox */
+            image-rendering: -moz-crisp-edges;
+            /* Firefox old */
+        }
+
         /* Single scale wrapper — everything lives here at fixed base size */
         #scale-root {
             position: absolute;
@@ -657,7 +667,9 @@
             function scaleGame() {
                 const scaleX = window.innerWidth / BASE_W;
                 const scaleY = window.innerHeight / BASE_H;
-                const scale = fillMode ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+                // Arredondar para múltiplo de 0.25 evita sub-pixel rendering que causa blur
+                const rawScale = fillMode ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+                const scale = Math.round(rawScale * 4) / 4;
                 const root = document.getElementById('scale-root');
                 if (!root) return;
                 root.style.transform = 'scale(' + scale + ')';

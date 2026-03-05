@@ -90,6 +90,7 @@ class LichKing extends Enemy {
         this.body.setCircle(30, 45, 80); // Radius 30, X-offset 0, Y-offset 20 (moves it down)
 
         this.animPrefix = 'lichking';
+        this.damageColor = '#00ff00';
         this.hp = 1000;
         this.maxHp = 1000;
         this.speed = 35; // Slightly slower walk
