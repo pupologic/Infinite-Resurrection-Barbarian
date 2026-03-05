@@ -69,8 +69,8 @@ class RangedEnemy extends Enemy {
 
         this.animPrefix = 'demonImp';
 
-        this.hp = 10;
-        this.maxHp = 10;
+        this.hp = 15;
+        this.maxHp = 15;
         this.speed = 40;
         this.visionRange = 450;
         this.keepDistance = 250;

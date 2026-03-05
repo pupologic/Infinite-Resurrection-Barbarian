@@ -57,8 +57,8 @@ class VamBatEnemy extends Enemy {
         super(scene, x, y, 'vambat_walk', shadowWidth, shadowHeight, shadowYOffset);
 
         this.animPrefix = 'vambat';
-        this.hp = 8;
-        this.maxHp = 8;
+        this.hp = 12;
+        this.maxHp = 12;
         this.speed = 90;
         this.damage = 6;
         this.baseVisionRange = 400;

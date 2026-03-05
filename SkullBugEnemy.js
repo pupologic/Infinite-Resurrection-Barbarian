@@ -74,8 +74,8 @@ class SkullBugEnemy extends Enemy {
         this.animPrefix = 'skullbug';
 
         // SkullBug stats: Very fast, low HP, low damage
-        this.hp = 5;
-        this.maxHp = 5;
+        this.hp = 10;
+        this.maxHp = 10;
         this.speed = 130;  // High speed
         this.damage = 2;   // Low damage
 

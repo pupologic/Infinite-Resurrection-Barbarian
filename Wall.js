@@ -20,6 +20,8 @@ class Wall extends Phaser.Physics.Arcade.Sprite {
         }
     };
 
+    static collisionConfig = {};
+
     constructor(scene, x, y, texture, frame, options = {}) {
         super(scene, x, y, texture, frame);
         scene.add.existing(this);

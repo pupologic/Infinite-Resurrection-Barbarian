@@ -14,12 +14,12 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
 
     // Hint texts for each rune (what button/action to use)
     static HINT_TEXTS = [
-        "SHIFT para Deslizar",      // 0 — Dash
-        "SPACE e Soque para Chutar",      // 1 — Jump Kick
-        "Click ou J para Socar", // 2 — Punch
-        "Q para Derrubar",           // 3 — Ground Pound
-        "R para Rugir",           // 4 — Roar
-        "F para Defender",           // 5 — Shield
+        "SHIFT PARA DESLIZAR",      // 0 — Dash
+        "SPACE E BATAPARA CHUTAR",      // 1 — Jump Kick
+        "CLICK OU J PARA BATER", // 2 — Punch
+        "Q PARA DERRUBAR",           // 3 — Ground Pound
+        "R PARA RUGIR",           // 4 — Roar
+        "F PARA DEFENDER",           // 5 — Shield
     ];
 
     static createAnimations(scene) {
@@ -68,7 +68,7 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
         // Create Hint Text (initially invisible)
         this.hintText = scene.add.text(x, y - 50, Rune.HINT_TEXTS[this.frameIndex], {
             fontFamily: '"Press Start 2P"',
-            fontSize: '8px',
+            fontSize: '12px',
             color: '#ffffff',
             stroke: '#000000',
             strokeThickness: 3,
@@ -151,6 +151,7 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
 
         // Camera shake
         this.scene.cameras.main.shake(120, 0.006);
+        this.scene.sound.play('Explosion');
 
         // Small particle burst (circles)
         for (let i = 0; i < 6; i++) {

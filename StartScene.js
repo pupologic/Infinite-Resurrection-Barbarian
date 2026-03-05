@@ -35,6 +35,7 @@ class StartScene extends Phaser.Scene {
         this.load.audio('NextLevel', 'Asset/Audio/NextLevel.mp3');
         this.load.audio('AutoPunch', 'Asset/Audio/AutoPunch.mp3');
         this.load.audio('WalkPlayer', 'Asset/Audio/WalkPlayer.mp3');
+        this.load.audio('Barrier', 'Asset/Audio/Barrier.mp3');
     }
 
     create() {

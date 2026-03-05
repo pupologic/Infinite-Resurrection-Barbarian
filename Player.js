@@ -75,12 +75,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             scene.anims.create({
                 key: `punch-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_punch', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 15, repeat: 0
+                frameRate: 12, repeat: 0
             });
             scene.anims.create({
                 key: `punch-idle-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_punch_idle', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 15, repeat: 0
+                frameRate: 12, repeat: 0
             });
             scene.anims.create({
                 key: `jump-${dir}`,
@@ -105,12 +105,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             scene.anims.create({
                 key: `roar-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_roar', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 15, repeat: 0
+                frameRate: 12, repeat: 0
             });
             scene.anims.create({
                 key: `pound-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_pound', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 15, repeat: 0
+                frameRate: 12, repeat: 0
             });
             scene.anims.create({
                 key: `hurt-${dir}`,
@@ -201,6 +201,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.graceCounter = 0;
         this.punchPressed = false;
         this.lastPunchTime = 0;
+        this.punchId = 0; // Unique ID for each punch sequence
 
         // Inventory
         this.keys = [];
@@ -309,8 +310,9 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         // --- SOUND EVENTS ---
         this.on('animationupdate', (anim, frame) => {
             if (anim.key.startsWith('punch-') || anim.key.startsWith('punch-idle-')) {
-                // Play AutoPunch every 4 frames (frame 4, 8...)
-                if (frame.index % 4 === 0) {
+                // Play AutoPunch exactly on the 3rd and 8th frames
+                const localFrame = frame.index % 8;
+                if (localFrame === 2 || localFrame === 6) {
                     this.scene.sound.play('AutoPunch', { volume: 0.5 });
                 }
             }
@@ -684,7 +686,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             const isCurrentlyPressing = this.attackKey.isDown || (pointer.isDown && isPointerOnCanvas);
             if (isCurrentlyPressing && this.altitude === 0 && this.actionLockTimer <= 0 && !this.isDefending) {
                 if (!this.isAttacking) {
-                    this.scene.sound.play('Punch');
+                    this.punchId++; // Increment to signal a fresh punch interaction
                 }
                 this.isAttacking = true;
                 this.graceCounter = this.punchGraceFrames;
@@ -1111,6 +1113,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     updateShieldFx() {
         if (this.isDefending && !this.shieldFxActive) {
             this.shieldFxActive = true;
+            this.scene.sound.play('Barrier', { volume: 0.6 });
 
             // Create shield if it doesn't exist
             if (!this.shieldFx) {

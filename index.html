@@ -222,10 +222,13 @@
         #inventory-sidebar {
             width: 192px;
             height: 600px;
-            padding: 20px;
+            padding: 0 15px;
+            /* Removed top/bottom padding to let flex center it */
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
+            justify-content: center;
+            /* Vertical alignment center */
             align-items: center;
             color: #d7ccc8;
         }
@@ -244,17 +247,16 @@
         .backpack-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            grid-template-rows: repeat(5, 1fr);
-            gap: 8px;
+            gap: 12px;
             width: 100%;
-            flex: 1;
-            /* fill all remaining height after title */
             padding: 0;
+            margin-top: 10px;
         }
 
         .inventory-slot {
             width: 100%;
-            height: 100%;
+            aspect-ratio: 1 / 1;
+            /* Force square slots */
             background-color: #1a100d;
             border: 2px solid #5d4037;
             display: flex;
@@ -389,6 +391,7 @@
     <script src="SkeletonEnemy.js"></script>
     <script src="SkullBugEnemy.js"></script>
     <script src="VamBatEnemy.js"></script>
+    <script src="LichKing.js"></script>
     <script src="Wall.js"></script>
     <script src="Door.js"></script>
     <script src="Chest.js"></script>
@@ -397,9 +400,12 @@
     <script src="Portal.js"></script>
     <script src="Rune.js"></script>
     <script src="LevelData.js"></script>
-    <script src="Levels/level_tutorial.js"></script>
-    <script src="Levels/level_1.js"></script>
     <script src="Levels/level_2.js"></script>
+    <script src="Levels/level_3.js"></script>
+    <!-- Mapas Tiled exportados do MapManager (gerados via "🗺 Exportar Tiled JS") -->
+    <!-- Exporte cada nivel e salve em Levels/ com o nome exato abaixo -->
+
+    <script src="Levels/level_1.js"></script>
     <script src="StartScene.js"></script>
     <script src="game.js"></script>
 </head>

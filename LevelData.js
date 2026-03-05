@@ -4,44 +4,11 @@
 // If 'isProcedural: true', the game will generate the level randomly based on difficulty.
 
 window.LevelManifest = {
-    0: {
-        isProcedural: false,
-        playerStart: { x: 0, y: 800 },
-        portal: { x: 0, y: -850 },
-        rooms: [
-            { x: 0, y: -850, w: 5, h: 5, keyId: 'KEY_TUTORIAL', addChest: false, addGuards: false }
-        ],
-        enemies: [
-            { type: 'melee', x: 0, y: 400 },
-            { type: 'melee', x: -150, y: 200 },
-            { type: 'ranged', x: 0, y: -200 }
-        ],
-        obstacles: [
-            { x: -150, y: 600, type: 'rock' },
-            { x: 150, y: 500, type: 'rock' },
-            { x: -200, y: -400, type: 'rock' }
-        ],
-        interactables: [
-            // Chest containing the key needed for the door (Placed outside the room)
-            { type: 'chest', x: 200, y: -500, loot: 'KEY', value: 'KEY_TUTORIAL', direction: 'down', extraDrops: ['HEALTH', 'STAMINA'] }
-        ],
-        traps: [
-            { x: -100, y: 50 },
-            { x: 100, y: 50 }
-        ],
-        runes: [
-            { x: -300, y: 600, frame: 0 },
-            { x: -200, y: 600, frame: 1 },
-            { x: -100, y: 600, frame: 2 },
-            { x: 0, y: 600, frame: 3 },
-            { x: 100, y: 600, frame: 4 },
-            { x: 200, y: 600, frame: 5 }
-        ]
-    },
+
     1: {
         isProcedural: false,
         groundBounds: { startX: -800, startY: -600, endX: 800, endY: 1000 },
-        playerStart: { x: 0, y: 800 },
+        playerStart: { x: 0, y: 0 },
         enemies: [
             // Corridors (Green dots -> Vampbats & SkullBugs)
             { type: 'vambat', x: -500, y: 300 },
@@ -111,28 +78,28 @@ window.LevelManifest = {
         })()
     },
     2: {
-        isProcedural: true,
+        isProcedural: false,
         enemies: [],
         obstacles: [],
         interactables: [],
         portal: null
     },
     3: {
-        isProcedural: true,
+        isProcedural: false,
         enemies: [],
         obstacles: [],
         interactables: [],
         portal: null
     },
     4: {
-        isProcedural: true,
+        isProcedural: false,
         enemies: [],
         obstacles: [],
         interactables: [],
         portal: null
     },
     5: {
-        isProcedural: true,
+        isProcedural: false,
         enemies: [],
         obstacles: [],
         interactables: [],

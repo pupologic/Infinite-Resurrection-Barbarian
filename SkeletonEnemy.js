@@ -60,8 +60,8 @@ class SkeletonEnemy extends Enemy {
         this.animPrefix = 'skeleton';
 
         // Skeleton stats: slower, less HP, less damage
-        this.hp = 10;
-        this.maxHp = 10;
+        this.hp = 20;
+        this.maxHp = 20;
         this.speed = 55;
         this.damage = 3;
 

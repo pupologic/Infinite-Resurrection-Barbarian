@@ -69,8 +69,8 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         this.startX = x;
         this.startY = y;
-        this.hp = 20;
-        this.maxHp = 20;
+        this.hp = 30; // Increased to whole number (compatible with 2 damage per hit)
+        this.maxHp = 30;
         this.speed = 80; // Increased chase speed
         this.baseVisionRange = 300;
         this.visionRange = this.baseVisionRange;

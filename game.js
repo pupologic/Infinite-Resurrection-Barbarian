@@ -94,13 +94,30 @@ document.addEventListener('visibilitychange', () => {
 const game = new Phaser.Game(config);
 
 let player;
-let currentLevel = 0; // Start at Tutorial Level
+let currentLevel = 1; // Start at Level 1 (Tiled)
 const MAX_LEVELS = 5;
 const REBORN_SPRITE_OFFSET_Y = 30; // Adjusted offset for the reborn sprite marker
 const REBORN_SAFE_ZONE_RADIUS = 200; // Adjustable safe zone radius around spawn Point (3x3 tiles is ~192-250px)
 let isPaused = false;
 let pauseContainer = null;
 let firstTimeStart = true;
+
+// --- PHASER TILEMAP: Mapeamento de tilesets Tiled → chaves Phaser ---
+const TILESET_PHASER_KEY = {
+    'Ground': 'ground_sheet',
+    'GroundSlice': 'ground_slice',
+    'GroundSlice2': 'ground_slice',
+    'CornerSlice': 'inner_corner_sheet',
+    'Corner_Slice': 'inner_corner_sheet',
+};
+
+// Mapeamento nível → chave de mapa Tiled (preenchido com os arquivos exportados)
+const LEVEL_TILED_MAP = {
+    0: 'tutorial',
+    1: 'level_1',
+    2: 'level_2',
+    3: 'level_3',
+};
 
 function preload() {
     this.load.image('warrior_full', 'Asset/Warrior/warrior_tilesheet.png');
@@ -162,6 +179,19 @@ function preload() {
     this.load.image('vambat_dead_full', 'Asset/VamBat/vambat_dead_tilesheet.png');
     this.load.image('vambat_hurt_full', 'Asset/VamBat/vambat_hurt_tilesheet.png');
 
+    // Lich King Assets
+    this.load.image('lichking_idle_full', 'Asset/LickKing/lichking_idle_tilesheet.png');
+    this.load.image('lichking_walk_full', 'Asset/LickKing/lichking_walk_tilesheet.png');
+    this.load.image('lichking_hurt_full', 'Asset/LickKing/lichking_hurt_tilesheet.png');
+    this.load.image('lichking_dead_full', 'Asset/LickKing/lichking_dead_tilesheet.png');
+    this.load.image('lichking_attack1_full', 'Asset/LickKing/lichking_attack1_tilesheet.png');
+    this.load.image('lichking_attack2_full', 'Asset/LickKing/lichking_attack2_tilesheet.png');
+    this.load.image('lichking_attack3_full', 'Asset/LickKing/lichking_attack3_tilesheet.png');
+    this.load.image('lichking_shield_full', 'Asset/LickKing/lichking_shield_tilesheet.png');
+    this.load.image('lichking_teleport_full', 'Asset/LickKing/lichking_teleport_tilesheet.png');
+    this.load.image('lich_energy_1_full', 'Asset/LickKing/lich_energy_1_tilesheet.png');
+    this.load.image('lich_energy_2_full', 'Asset/LickKing/lich_energy_2_tilesheet.png');
+
     this.load.image('portal_full', 'Asset/Misc/portal.png');
     this.load.image('chest_multi', 'Asset/Misc/chest_tilesheet_multi.png');
     this.load.image('spike_trap_full', 'Asset/Misc/spike_trap.png');
@@ -183,6 +213,103 @@ function preload() {
     this.load.image('reborn_place', 'Asset/Misc/reborn_place.png');
     this.load.image('warrior_reborn_full', 'Asset/Warrior/warrior_reborn_tilesheet.png');
     this.load.image('runes_full', 'Asset/Misc/runes_tilesheet.png');
+
+    // --- Registrar TileMaps Tiled (exportados do MapManager) no cache do Phaser ---
+    if (window.TileMaps) {
+
+        /**
+         * Converte o formato "infinite" com chunks do Tiled para um formato plano
+         * que o Phaser 3 consegue processar corretamente.
+         */
+        function convertTiledInfiniteToFlat(mapData) {
+            // Se não é infinite, retorna sem alterar
+            if (!mapData.infinite) return mapData;
+
+            const cloned = JSON.parse(JSON.stringify(mapData));
+
+            cloned.layers = cloned.layers.map(layer => {
+                // Apenas tilelayers com chunks precisam de conversão
+                if (layer.type !== 'tilelayer' || !layer.chunks) return layer;
+
+                // 1. Descobrir os bounds reais de todos os chunks desta layer
+                let maxX = 0, maxY = 0;
+                layer.chunks.forEach(chunk => {
+                    maxX = Math.max(maxX, chunk.x + chunk.width);
+                    maxY = Math.max(maxY, chunk.y + chunk.height);
+                });
+
+                // Usar os bounds da layer ou os bounds calculados, o que for maior
+                const flatW = Math.max(layer.width || 0, maxX);
+                const flatH = Math.max(layer.height || 0, maxY);
+
+                // 2. Criar array plano preenchido com 0
+                const flat = new Array(flatW * flatH).fill(0);
+
+                // 3. Copiar dados de cada chunk para o array plano
+                layer.chunks.forEach(chunk => {
+                    for (let row = 0; row < chunk.height; row++) {
+                        for (let col = 0; col < chunk.width; col++) {
+                            const srcIdx = row * chunk.width + col;
+                            const dstX = chunk.x + col;
+                            const dstY = chunk.y + row;
+                            if (dstX < flatW && dstY < flatH) {
+                                flat[dstY * flatW + dstX] = chunk.data[srcIdx] || 0;
+                            }
+                        }
+                    }
+                });
+
+                // 4. Substituir chunks pelo array plano
+                delete layer.chunks;
+                layer.data = flat;
+                layer.width = flatW;
+                layer.height = flatH;
+                layer.x = 0;
+                layer.y = 0;
+                return layer;
+            });
+
+            // Ajustar dimensões do mapa raiz com os maiores valores encontrados
+            let rootMaxW = 0, rootMaxH = 0;
+            cloned.layers.forEach(l => {
+                if (l.type === 'tilelayer') {
+                    rootMaxW = Math.max(rootMaxW, (l.width || 0));
+                    rootMaxH = Math.max(rootMaxH, (l.height || 0));
+                }
+            });
+            cloned.width = Math.max(cloned.width || 0, rootMaxW);
+            cloned.height = Math.max(cloned.height || 0, rootMaxH);
+            cloned.infinite = false;
+
+            return cloned;
+        }
+
+        Object.entries(window.TileMaps).forEach(([name, data]) => {
+            console.log("Injecting Tiled Map into Cache:", name);
+            const flatData = convertTiledInfiniteToFlat(data);
+            // Phaser espera { data: {...}, format: 1 } no cache de tilemaps
+            this.cache.tilemap.add(name, { data: flatData, format: 1 });
+
+            // Forçar carregamento das imagens dos tilesets se presentes no JSON
+            if (data.tilesets) {
+                data.tilesets.forEach(ts => {
+                    const tsKey = TILESET_PHASER_KEY[ts.name] || ts.name;
+
+                    // Se já estivermos carregando como spritesheet manual, não tente carregar como imagem simples
+                    if (['ground_sheet', 'ground_slice', 'inner_corner_sheet'].includes(tsKey)) return;
+
+                    // Tileset 'System' é só para o editor (colisão visual), sem imagem real — ignorar no preload
+                    if (ts.name === 'System' || (ts.image && ts.image.startsWith('data:'))) return;
+
+                    if (!this.textures.exists(tsKey) && ts.image) {
+                        // Tentar carregar a imagem baseada no nome do arquivo se não estiver no manual keys
+                        const imgPath = ts.image.startsWith('Asset/') ? ts.image : `Asset/Map/${ts.image}`;
+                        this.load.image(tsKey, imgPath);
+                    }
+                });
+            }
+        });
+    }
 }
 
 function create() {
@@ -193,6 +320,7 @@ function create() {
     SkeletonEnemy.createAnimations(this);
     SkullBugEnemy.createAnimations(this);
     VamBatEnemy.createAnimations(this);
+    LichKing.createAnimations(this);
     Portal.createAnimations(this);
     Chest.createAnimations(this);
     Trap.createAnimations(this);
@@ -468,6 +596,25 @@ function create() {
     }
 
     firstTimeStart = false;
+
+    // --- SISTEMA DE LUZ BASEADO EM TILES (estilo Tibia) ---
+    this.lightGfx = this.add.graphics();
+    this.lightGfx.setScrollFactor(0);
+    this.lightGfx.setDepth(99998);
+
+    // Raio base da luz do player em tiles. Altere este valor para mudar o alcance padrão.
+    this.playerLightRadius = 5;
+
+    // API para boost temporário de luz (ex: item Tocha)
+    // Uso: this.setLightBoost(extraTiles, durationMs)
+    this.setLightBoost = (extraTiles, duration) => {
+        this.playerLightRadius = 5 + extraTiles;
+        if (this._lightBoostTimer) this._lightBoostTimer.remove();
+        this._lightBoostTimer = this.time.addEvent({
+            delay: duration,
+            callback: () => { this.playerLightRadius = 5; }
+        });
+    };
 }
 
 // Item Definitions
@@ -627,14 +774,85 @@ function renderBackpack() {
 function update(time, delta) {
     if (isPaused) return;
 
+    // Manual per-frame tile collision (avoids stale persistent colliders across level transitions)
+    if (this.tileCollisionLayers && this.tileCollisionLayers.length) {
+        this.tileCollisionLayers.forEach(layer => {
+            if (!layer || !layer.active) return;
+            this.physics.world.collide(player, layer);
+            this.physics.world.collide(this.enemies, layer);
+            this.physics.world.collide(this.projectiles, layer, (proj) => proj.destroy());
+        });
+    }
+
     if (player) {
         if (!player.inventory) {
             player.inventory = { health: 0, speed: 0, strength: 0, stamina: 0 };
         }
         player.update(time, delta);
+        this.punchSoundPlayedThisFrame = -1; // Reset sound tracker for this update
 
-        // Update player light position
-        // Update player light position
+        // --- LUZ BASEADA EM TILES (estilo Tibia retro) ---
+        if (this.lightGfx && player.active) {
+            const cam = this.cameras.main;
+            const TILE = 64;
+            const R = this.playerLightRadius || 5; // raio fixo em tiles
+
+            // Oscilação de borda: dois senos lentos (respira, não pisca)
+            // O breathe só vai afetar tiles nas bordas, não o núcleo interno
+            const breathe = Math.sin(time * 0.00028) * 0.18
+                + Math.sin(time * 0.00012) * 0.07;
+
+            const ptx = Math.floor(player.x / TILE);
+            const pty = Math.floor(player.y / TILE);
+
+            const startTX = Math.floor(cam.worldView.left / TILE) - 1;
+            const startTY = Math.floor(cam.worldView.top / TILE) - 1;
+            const endTX = Math.ceil(cam.worldView.right / TILE) + 1;
+            const endTY = Math.ceil(cam.worldView.bottom / TILE) + 1;
+
+            this.lightGfx.clear();
+
+            // Raios 1, 2 e 3 (normDist <= 0.6) = 100% iluminado, sem oscilação
+            // A partir do 4º raio começa a escuridão e o breathe
+            const getAlpha = (nd) => {
+                if (nd <= 0.60) return 0;    // raios 1-3: totalmente lit (fixo)
+                if (nd <= 0.73) return 0.30; // raio 4: penumbra
+                if (nd <= 0.86) return 0.62; // raio 5: escuro
+                if (nd <= 1.00) return 0.88; // borda: muito escuro
+                return 0.96;                  // além do raio: preto
+            };
+
+            for (let ty = startTY; ty <= endTY; ty++) {
+                for (let tx = startTX; tx <= endTX; tx++) {
+                    let rawDist = Math.sqrt((tx - ptx) ** 2 + (ty - pty) ** 2);
+                    let normDist = rawDist / R;
+
+                    // Pontos de luz extras
+                    if (this.lightPoints) {
+                        this.lightPoints.forEach(lp => {
+                            const ltx = Math.floor(lp.x / TILE);
+                            const lty = Math.floor(lp.y / TILE);
+                            const lr = (lp.radius || 180) / TILE;
+                            const d = Math.sqrt((tx - ltx) ** 2 + (ty - lty) ** 2);
+                            normDist = Math.min(normDist, d / lr);
+                        });
+                    }
+
+                    // Breathe só afeta a partir do 4º raio em diante (normDist > 0.60)
+                    const edgeFactor = Math.max(0, normDist - 0.60) / 0.40;
+                    const adjustedND = normDist + breathe * edgeFactor;
+
+                    const alpha = getAlpha(adjustedND);
+                    if (alpha < 0.01) continue;
+
+                    const sx = tx * TILE - cam.worldView.left;
+                    const sy = ty * TILE - cam.worldView.top;
+
+                    this.lightGfx.fillStyle(0x000000, alpha);
+                    this.lightGfx.fillRect(sx, sy, TILE, TILE);
+                }
+            }
+        }
 
         // Interaction Check
         if (Phaser.Input.Keyboard.JustDown(player.interactKey)) {
@@ -762,11 +980,22 @@ function update(time, delta) {
 
                 // 3. Punch Damage (Player -> Enemy) - NO PUSHBACK for punch
                 else if (player.isAttacking && inPlayerAttackRange) {
-                    if (time > player.lastPunchTime + 500) {
-                        enemy.takeDamage(2, null);
+                    const currentFrame = player.anims.currentFrame ? player.anims.currentFrame.index : -1;
+
+                    // Trigger hits on Frame 1 and Frame 4
+                    if ((currentFrame === 1 || currentFrame === 4) &&
+                        (enemy.lastHitPunchId !== player.punchId || enemy.lastHitPunchFrame !== currentFrame)) {
+
+                        enemy.takeDamage(2, null); // Whole number damage
+                        enemy.lastHitPunchId = player.punchId;
+                        enemy.lastHitPunchFrame = currentFrame;
                         player.lastPunchTime = time;
-                        enemy.lastDamageTime = time;
-                        this.sound.play('Punch');
+
+                        // Play impact sound once per hit frame (even if hitting multiple enemies)
+                        if (this.punchSoundPlayedThisFrame !== currentFrame) {
+                            this.sound.play('Punch');
+                            this.punchSoundPlayedThisFrame = currentFrame;
+                        }
                     }
                 }
 
@@ -817,146 +1046,8 @@ function generateLevel(scene) {
 
     // Initialize room boundary tracker
     scene.rooms = [];
-
-    // 1. Ground - Full Image Tiling with Rotation
-    const worldSize = 2048;
-
-    // Get full image size
-    const groundTexture = scene.textures.get('ground_fill');
-    const groundImg = groundTexture.getSourceImage();
-    const gWidth = groundImg.width;
-    // Fill Ground decorativo (Preenchimento de fundo removido - o fundo agora será preto onde não houver tiles)
-    /*
-    let startXGround = -worldSize / 2;
-    ...
-    */
-
-    // Coletamos posições de chão para espalhar dirt depois
+    scene.lichTeleportPoints = [];
     scene.groundPositions = [];
-
-    if (currentLevelData && currentLevelData.groundBounds) {
-        startXGround = currentLevelData.groundBounds.startX;
-        startYGround = currentLevelData.groundBounds.startY;
-        endXGround = currentLevelData.groundBounds.endX;
-        endYGround = currentLevelData.groundBounds.endY;
-    } else if (currentLevel === 0) {
-        // Fallback: corridor bounds para o Tutorial (768x2048) - usado só se não há groundBounds
-        startXGround = -768 / 2;
-        startYGround = -2048 / 2;
-        endXGround = 768 / 2;
-        endYGround = 2048 / 2;
-    }
-
-    /*
-    for (let y = startYGround; y < endYGround; y += gHeight) {
-        ...
-    }
-    */
-
-    // Update World & Camera Bounds baseados nos limites definidos do ground
-    const levelBounds = currentLevelData && currentLevelData.groundBounds ? currentLevelData.groundBounds : { startX: -worldSize / 2, startY: -worldSize / 2, endX: worldSize / 2, endY: worldSize / 2 };
-    const levelWidthFull = levelBounds.endX - levelBounds.startX;
-    const levelHeightFull = levelBounds.endY - levelBounds.startY;
-    scene.cameras.main.setBounds(levelBounds.startX, levelBounds.startY, levelWidthFull, levelHeightFull);
-    scene.physics.world.setBounds(levelBounds.startX, levelBounds.startY, levelWidthFull, levelHeightFull);
-
-    // 2. Borders (Walls)
-    const tileSize = 64;
-
-    // Se o nível atual tem walls manuais definidas no LevelManifest (ex: exportadas do MapManager),
-    // pule a geração procedural de bordas - as paredes serão criadas pela seção de 'Manual Walls' abaixo.
-    const hasManualWalls = currentLevelData && !currentLevelData.isProcedural &&
-        ((currentLevelData.walls && (Array.isArray(currentLevelData.walls) ? currentLevelData.walls.length > 0 : Object.keys(currentLevelData.walls).length > 0)) ||
-            (currentLevelData.visualTiles && (Array.isArray(currentLevelData.visualTiles) ? currentLevelData.visualTiles.length > 0 : Object.keys(currentLevelData.visualTiles).length > 0)));
-
-    if (!hasManualWalls) {
-        if (currentLevel === 0) {
-            // Tutorial Corridor Generation (fallback se não há walls manuais)
-            const corridorWidth = 768;
-            const corridorHeight = 2048;
-            const startX = -corridorWidth / 2;
-            const startY = -corridorHeight / 2;
-            const tilesX = Math.ceil(corridorWidth / tileSize);
-            const tilesY = Math.ceil(corridorHeight / tileSize);
-
-            for (let x = 0; x < tilesX; x++) {
-                for (let y = 0; y < tilesY; y++) {
-                    if (x === 0 || x === tilesX - 1 || y === 0 || y === tilesY - 1) {
-                        let rx = startX + x * tileSize + tileSize / 2;
-                        let ry = startY + y * tileSize + tileSize / 2;
-
-                        let frameIndex = 4;
-                        if (y === 0) {
-                            if (x === 0) frameIndex = 0;
-                            else if (x === tilesX - 1) frameIndex = 2;
-                            else frameIndex = 1;
-                        } else if (y === tilesY - 1) {
-                            if (x === 0) frameIndex = 6;
-                            else if (x === tilesX - 1) frameIndex = 8;
-                            else frameIndex = 7;
-                        } else {
-                            if (x === 0) frameIndex = 3;
-                            else if (x === tilesX - 1) frameIndex = 5;
-                        }
-
-                        let wr = new Wall(scene, rx, ry, 'ground_slice', frameIndex, {
-                            collisionWidth: tileSize,
-                            collisionHeight: tileSize
-                        }).setDepth(-10000);
-                        scene.walls.add(wr);
-                    } else {
-                        if (Phaser.Math.Between(1, 100) <= 10) {
-                            let rx = startX + x * tileSize + tileSize / 2;
-                            let ry = startY + y * tileSize + tileSize / 2;
-                            rx += Phaser.Math.Between(-10, 10);
-                            ry += Phaser.Math.Between(-10, 10);
-                            scene.groundLayer.add(
-                                scene.add.image(rx, ry, 'dirt')
-                                    .setAngle(Phaser.Math.Between(0, 360))
-                                    .setScale(Phaser.Math.FloatBetween(0.8, 1.2))
-                                    .setDepth(-35000)
-                            );
-                        }
-                    }
-                }
-            }
-        } else {
-            // Standard Arena Generation
-            const startX = -worldSize / 2;
-            const startY = -worldSize / 2;
-            const tilesX = Math.ceil(worldSize / tileSize);
-            const tilesY = Math.ceil(worldSize / tileSize);
-
-            for (let x = 0; x < tilesX; x++) {
-                for (let y = 0; y < tilesY; y++) {
-                    if (x === 0 || x === tilesX - 1 || y === 0 || y === tilesY - 1) {
-                        let rx = startX + x * tileSize + tileSize / 2;
-                        let ry = startY + y * tileSize + tileSize / 2;
-                        let frameIndex = 4;
-
-                        if (y === 0) {
-                            if (x === 0) frameIndex = 0;
-                            else if (x === tilesX - 1) frameIndex = 2;
-                            else frameIndex = 1;
-                        } else if (y === tilesY - 1) {
-                            if (x === 0) frameIndex = 6;
-                            else if (x === tilesX - 1) frameIndex = 8;
-                            else frameIndex = 7;
-                        } else {
-                            if (x === 0) frameIndex = 3;
-                            else if (x === tilesX - 1) frameIndex = 5;
-                        }
-
-                        let wr = new Wall(scene, rx, ry, 'ground_slice', frameIndex, {
-                            collisionWidth: tileSize,
-                            collisionHeight: tileSize
-                        }).setDepth(-10000);
-                        scene.walls.add(wr);
-                    }
-                }
-            }
-        }
-    }
 
     // --- Room/Structure Generator Helper ---
     const createStructure = (x, y, w, h, keyId, options = {}) => {
@@ -1069,488 +1160,277 @@ function generateLevel(scene) {
         }
     };
 
-    // 3. Level Data (Manual vs Procedural)
-    if (currentLevelData && !currentLevelData.isProcedural) {
-        console.log("Loading Manual Level " + currentLevel);
+    // --- Level Data (Manual vs Tiled vs Procedural) ---
+    const tiledKey = LEVEL_TILED_MAP[currentLevel];
+    const hasTiledMap = !!(tiledKey && scene.cache.tilemap.has(tiledKey));
 
-        // Player Start
+    if (hasTiledMap) {
+        console.log("Loading Tiled Level " + currentLevel);
+        const map = scene.make.tilemap({ key: tiledKey });
+
+        // Use (0,0) as origin for Tiled maps to match editor coordinates
+        const originX = 0;
+        const originY = 0;
+        const mapPxW = map.widthInPixels;
+        const mapPxH = map.heightInPixels;
+
+        // Reset world & camera bounds
+        scene.cameras.main.setBounds(originX, originY, mapPxW, mapPxH);
+        scene.physics.world.setBounds(originX, originY, mapPxW, mapPxH);
+
+        // Register tilesets.
+        // 'System' tileset is editor-only. Phaser needs it to resolve GIDs, so we create a
+        // 1x1 transparent texture on-the-fly if it doesn't exist, then register it normally.
+        if (!scene.textures.exists('System')) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            scene.textures.addCanvas('System', canvas);
+        }
+        const phaserTilesets = map.tilesets.map(ts => {
+            const phaserKey = TILESET_PHASER_KEY[ts.name] || ts.name;
+            const result = map.addTilesetImage(ts.name, phaserKey);
+            if (!result) {
+                console.warn(`[Tiled] Could not register tileset: ${ts.name} (key: ${phaserKey})`);
+            }
+            return result;
+        }).filter(ts => ts !== null && ts !== undefined);
+
+        scene.activeTiledLayers = [];
+        scene.activeTiledMap = map;
+        scene.tiledColliders = []; // fresh list for this level's tile layer colliders
+
+        // 1. Tile Layers
+        map.layers.forEach(layerData => {
+            const layer = map.createLayer(layerData.name, phaserTilesets, originX, originY);
+            if (!layer) return;
+
+            const props = layerData.properties || [];
+            const isCollision = props.some(p => p.name === 'collision' && p.value === true);
+            const depth = props.find(p => p.name === 'depth')?.value ?? -20000;
+            layer.setDepth(depth);
+
+            if (isCollision) {
+                layer.setCollisionByExclusion([-1]);
+                // Store the layer for per-frame manual collision (avoids persistent stale colliders)
+                if (!scene.tileCollisionLayers) scene.tileCollisionLayers = [];
+                scene.tileCollisionLayers.push(layer);
+            }
+
+            // Register ground for dirt
+            if (!isCollision) {
+                layer.forEachTile(t => {
+                    if (t.index !== -1) {
+                        scene.groundPositions.push({
+                            x: t.pixelX + map.tileWidth / 2,
+                            y: t.pixelY + map.tileHeight / 2
+                        });
+                    }
+                });
+            }
+            scene.activeTiledLayers.push(layer);
+        });
+
+        // 2. Object Layers (Enemies, Portal, etc.)
+        map.getObjectLayerNames().forEach(layerName => {
+            const objects = map.getObjectLayer(layerName).objects;
+            objects.forEach(obj => {
+                const ox = obj.x;
+                const oy = obj.y;
+
+                // Check case-insensitive since MapManager exports 'playerStart' (lowercase p)
+                const objTypeLower = (obj.type || '').toLowerCase();
+                const objNameLower = (obj.name || '').toLowerCase();
+                if (objTypeLower === 'playerstart' || objNameLower === 'playerstart') {
+                    player.setPosition(ox, oy);
+                    player.spawnPoint = { x: ox, y: oy };
+                    scene.rebornSprite = scene.add.sprite(ox, oy + REBORN_SPRITE_OFFSET_Y, 'reborn_place_sheet', 0).setDepth(-19998);
+                    scene.rebornSprite.play('reborn-activate');
+                } else if (['enemy', 'lichking', 'vambat', 'skeleton', 'skullbug', 'ranged', 'enemy_melee', 'enemy_ranged', 'enemy_skeleton', 'enemy_vambat', 'enemy_skullbug', 'enemy_lichking'].includes(objTypeLower)) {
+                    let e;
+                    const cleanType = objTypeLower.replace('enemy_', '');
+                    switch (cleanType) {
+                        case 'lichking': e = new LichKing(scene, ox, oy); break;
+                        case 'vambat': e = new VamBatEnemy(scene, ox, oy); break;
+                        case 'skeleton': e = new SkeletonEnemy(scene, ox, oy); break;
+                        case 'skullbug': e = new SkullBugEnemy(scene, ox, oy); break;
+                        case 'ranged': e = new RangedEnemy(scene, ox, oy); break;
+                        default: e = new Enemy(scene, ox, oy); break;
+                    }
+                    scene.enemies.add(e);
+                } else if (objTypeLower === 'portal') {
+                    const portal = new Portal(scene, ox, oy);
+                    const target = obj.properties?.find(p => p.name === 'targetLevel')?.value;
+                    if (target !== undefined) portal.targetLevel = target;
+                    scene.portals.add(portal);
+                } else if (objTypeLower.startsWith('chest')) {
+                    // Handle chest, chest_up, chest_down, chest_left, chest_right
+                    let dir = 'down';
+                    if (objTypeLower.includes('up')) dir = 'up';
+                    if (objTypeLower.includes('left')) dir = 'left';
+                    if (objTypeLower.includes('right')) dir = 'right';
+
+                    const loot = obj.properties?.find(p => p.name === 'loot')?.value || 'COIN';
+                    scene.interactables.add(new Chest(scene, ox, oy, { type: loot }, { direction: dir }));
+                } else if (objTypeLower === 'rock') {
+                    const randomFrame = Phaser.Math.Between(0, 3);
+                    const rock = scene.add.image(ox, oy, 'rock', randomFrame).setDepth(oy);
+                    // Add to groundLayer so it gets destroyed on level transition (nextLevel clears this group)
+                    scene.groundLayer.add(rock);
+                    // Add collision physics body
+                    const rockBase = scene.obstacles.create(ox - 8, oy + 12, null).setVisible(false);
+                    if (rockBase && rockBase.body) rockBase.body.setCircle(24);
+                } else if (objTypeLower.startsWith('rune_')) {
+                    // rune_0 to rune_5
+                    const runeIdx = parseInt(objTypeLower.split('_')[1]) || 0;
+                    const rune = new Rune(scene, ox, oy, runeIdx);
+                    scene.runes.add(rune);
+                } else if (objTypeLower === 'teleport_point' || objTypeLower === 'lich_teleport') {
+                    scene.lichTeleportPoints.push({ x: ox, y: oy });
+                }
+            });
+        });
+
+        // Fallback if no PlayerStart found in Tiled
+        if (!player.spawnPoint || player.spawnPoint.x === 0) {
+            const start = currentLevelData?.playerStart || { x: 300, y: 300 };
+            player.setPosition(start.x, start.y);
+            player.spawnPoint = start;
+        }
+
+    } else if (currentLevelData && !currentLevelData.isProcedural) {
+        console.log("Loading Manual Level " + currentLevel);
+        // ... (Manual Loading Logic - Keep for levels without Tiled)
+        const worldSize = 2048;
+        const levelBounds = currentLevelData.groundBounds || { startX: -worldSize / 2, startY: -worldSize / 2, endX: worldSize / 2, endY: worldSize / 2 };
+        scene.cameras.main.setBounds(levelBounds.startX, levelBounds.startY, levelBounds.endX - levelBounds.startX, levelBounds.endY - levelBounds.startY);
+        scene.physics.world.setBounds(levelBounds.startX, levelBounds.startY, levelBounds.endX - levelBounds.startX, levelBounds.endY - levelBounds.startY);
+
         if (currentLevelData.playerStart) {
             const px = currentLevelData.playerStart.x;
             const py = currentLevelData.playerStart.y;
-            player.setPosition(px, py); // Player at original position
-            player.spawnPoint = { x: px, y: py }; // Update respawn point
+            player.setPosition(px, py);
+            player.spawnPoint = { x: px, y: py };
             scene.rebornSprite = scene.add.sprite(px, py + REBORN_SPRITE_OFFSET_Y, 'reborn_place_sheet', 0).setDepth(-19998);
             scene.rebornSprite.play('reborn-activate');
         }
 
-        // Rooms (Manual definition using the helper)
         if (currentLevelData.rooms) {
-            currentLevelData.rooms.forEach(r => {
-                createStructure(r.x, r.y, r.w, r.h, r.keyId, { addChest: r.addChest, addGuards: r.addGuards });
-            });
+            currentLevelData.rooms.forEach(r => createStructure(r.x, r.y, r.w, r.h, r.keyId, { addChest: r.addChest, addGuards: r.addGuards }));
         }
 
-        // Enemies
         if (currentLevelData.enemies) {
             currentLevelData.enemies.forEach(e => {
+                let ent;
                 switch (e.type) {
-                    case 'ranged':
-                        scene.enemies.add(new RangedEnemy(scene, e.x, e.y));
-                        break;
-                    case 'skeleton':
-                        scene.enemies.add(new SkeletonEnemy(scene, e.x, e.y));
-                        break;
-                    case 'vambat':
-                        scene.enemies.add(new VamBatEnemy(scene, e.x, e.y));
-                        break;
-                    case 'skullbug':
-                        scene.enemies.add(new SkullBugEnemy(scene, e.x, e.y));
-                        break;
-                    default:
-                        scene.enemies.add(new Enemy(scene, e.x, e.y));
-                        break;
+                    case 'lichking': ent = new LichKing(scene, e.x, e.y); break;
+                    case 'vambat': ent = new VamBatEnemy(scene, e.x, e.y); break;
+                    case 'skeleton': ent = new SkeletonEnemy(scene, e.x, e.y); break;
+                    case 'skullbug': ent = new SkullBugEnemy(scene, e.x, e.y); break;
+                    case 'ranged': ent = new RangedEnemy(scene, e.x, e.y); break;
+                    default: ent = new Enemy(scene, e.x, e.y); break;
                 }
+                scene.enemies.add(ent);
             });
         }
 
-        // --- Helper: resolve nome de textura p/ chave Phaser ---
-        const textureKeyMap = {
-            'GroundSlice': 'ground_slice',
-            'GroundSlice2': 'ground_slice',
-            'Ground': 'ground_sheet',
-            'Inner Corner': 'inner_corner_sheet',
-            'Corner_Slice': 'inner_corner_sheet',
-            'CornerSlice': 'inner_corner_sheet',
-        };
-        // Texturas puramente decorativas (sem colisão física)
+        // Manual Tiles
+        const textureKeyMap = { 'GroundSlice': 'ground_slice', 'GroundSlice2': 'ground_slice', 'Ground': 'ground_sheet', 'CornerSlice': 'inner_corner_sheet' };
         const decorativeTextures = new Set(['Ground']);
-
-        // --- Helper: instancia um tile (wall ou visual) a partir de dados normalizados ---
-        // wx, wy = posição center; frame, rot = frame e rotação; texName = nome original do tileset;
-        // depth = profundidade; isWallLayer = se a camada é de colisão; colDefs = collisionDefinitions
-        const spawnTile = (wx, wy, frame, rot, texName, depth, isWallLayer, colDefs) => {
-            const resolvedTexture = textureKeyMap[texName] || texName || 'ground_slice';
-            const isDecorative = decorativeTextures.has(texName);
-
-            // Busca definição de colisão customizada
-            let colDef = null;
-            if (!isDecorative && colDefs) {
-                const frameDefs = colDefs[texName] || colDefs[resolvedTexture];
-                if (frameDefs && frameDefs[frame] !== undefined) colDef = frameDefs[frame];
-            }
-
-            // Verifica registro fixo (hardcoded)
-            const registry = Wall.TILE_COLLISION_REGISTRY[resolvedTexture];
-            const hasHardcoded = registry && registry[frame];
-
-            // Decide se monta como Wall com colisão ou como imagem decorativa
-            const needsPhysics = !isDecorative && (colDef || hasHardcoded);
-
-            if (needsPhysics) {
-                const wall = new Wall(scene, wx, wy, resolvedTexture, frame || 0, {
-                    collisionWidth: 64,
-                    collisionHeight: 64,
-                    collisionGroup: scene.walls,
-                    collisionDefinition: colDef,
-                    rotation: rot,
-                    tileSize: 64
-                }).setDepth(depth);
-                scene.walls.add(wall);
-            } else {
-                const img = scene.add.image(wx, wy, resolvedTexture, frame || 0);
-                if (rot) img.setAngle(rot * 90);
-                img.setDepth(depth);
-                scene.groundLayer.add(img);
-                if (texName === 'Ground' || resolvedTexture === 'ground_sheet') {
-                    scene.groundPositions.push({ x: wx, y: wy });
-                }
-            }
-        };
-
-        // --- Helper: itera sobre walls ou visualTiles suportando AMBOS os formatos ---
-        // Formato antigo: Array de objetos { x, y, frame, texture, depth, rotation }
-        // Formato novo:   Objeto { "tex|depth:N": { texture, depth, collision, tiles:[[x,y,f] ou [x,y,f,r]] } }
-        const iterTileData = (data, defaultDepth, isWallLayer, colDefs) => {
-            if (!data) return;
-            if (Array.isArray(data)) {
-                // --- FORMATO LEGADO ---
-                data.forEach(w => {
-                    spawnTile(w.x, w.y, w.frame || 0, w.rotation || 0,
-                        w.texture, w.depth !== undefined ? w.depth : defaultDepth,
-                        isWallLayer, colDefs);
-                });
-            } else {
-                // --- FORMATO OTIMIZADO (novo) ---
-                Object.values(data).forEach(group => {
-                    const { texture, depth, tiles } = group;
-                    const d = depth !== undefined ? depth : defaultDepth;
-                    tiles.forEach(t => {
-                        // t = [x, y, frame] ou [x, y, frame, rotation]
-                        spawnTile(t[0], t[1], t[2] || 0, t[3] || 0,
-                            texture, d, isWallLayer, colDefs);
-                    });
-                });
-            }
-        };
-
         const colDefs = currentLevelData.collisionDefinitions;
 
-        // Manual Walls (camada com colisão ativa)
-        iterTileData(currentLevelData.walls, -40000, true, colDefs);
-
-        // Manual Visual Tiles (camada decorativa / sem colisão de layer)
-        iterTileData(currentLevelData.visualTiles, -35000, false, colDefs);
-
-        // Obstacles (Rocks)
-        if (currentLevelData.obstacles) {
-            currentLevelData.obstacles.forEach(o => {
-                if (o.type === 'rock') {
-                    // Visual part
-                    const randomFrame = Phaser.Math.Between(0, 3);
-                    const rock = scene.add.image(o.x, o.y, 'rock', randomFrame);
-                    rock.setDepth(o.y);
-
-                    // CRITICAL: Add visuals to cleanup group
-                    scene.dirtDecorations.add(rock);
-
-                    // Collision part (Invisible Circle)
-                    const baseY = o.y + 12;
-                    const baseX = o.x - 8;
-                    const rockBase = scene.obstacles.create(baseX, baseY, null);
-                    rockBase.setVisible(false);
-                    const radius = 24;
-                    rockBase.body.setCircle(radius);
-                }
-            });
-        }
-
-        // Traps
-        if (currentLevelData.traps) {
-            currentLevelData.traps.forEach(t => {
-                scene.traps.add(new Trap(scene, t.x, t.y));
-            });
-        }
-
-        // Interactables
-        if (currentLevelData.interactables) {
-            currentLevelData.interactables.forEach(i => {
-                if (i.type === 'chest') {
-                    scene.interactables.add(new Chest(scene, i.x, i.y, {
-                        type: i.loot || 'COIN',
-                        value: i.value,
-                        itemType: i.itemType,
-                        extraDrops: i.extraDrops
-                    }, { direction: i.direction || 'up' }));
-                } else if (i.type === 'door') {
-                    scene.interactables.add(new Door(scene, i.x, i.y, i.extra)); // extra could be { keyRequired: '...' }
-                }
-            });
-        }
-
-        // Runes (tutorial rune stones)
-        if (currentLevelData.runes) {
-            currentLevelData.runes.forEach(r => {
-                const rune = new Rune(scene, r.x, r.y, r.frame !== undefined ? r.frame : 0);
-                scene.runes.add(rune);
-            });
-        }
-
-        // --- Espalhar Dirt apenas nos tiles de chão authored ---
-        if (scene.groundPositions && scene.groundPositions.length > 0) {
-            const dirtCount = Math.min(600, scene.groundPositions.length * 2); // Quantidade proporcional ao tamanho do chão
-            for (let i = 0; i < dirtCount; i++) {
-                const pos = Phaser.Math.RND.pick(scene.groundPositions);
-                const rx = pos.x + Phaser.Math.Between(-30, 30);
-                const ry = pos.y + Phaser.Math.Between(-30, 30);
-
-                scene.groundLayer.add(
-                    scene.add.image(rx, ry, 'dirt')
-                        .setAngle(Phaser.Math.Between(0, 360))
-                        .setScale(Phaser.Math.FloatBetween(0.6, 1.0))
-                        .setDepth(-19999)
-                );
+        const spawnTile = (wx, wy, frame, rot, texName, depth) => {
+            const resTex = textureKeyMap[texName] || texName;
+            if (decorativeTextures.has(texName)) {
+                const img = scene.add.image(wx, wy, resTex, frame).setDepth(depth);
+                if (rot) img.setAngle(rot * 90);
+                scene.groundLayer.add(img);
+                scene.groundPositions.push({ x: wx, y: wy });
+            } else {
+                const wall = new Wall(scene, wx, wy, resTex, frame, {
+                    collisionGroup: scene.walls,
+                    rotation: rot,
+                    collisionDefinition: colDefs ? (colDefs[texName] || colDefs[resTex])?.[frame] : null
+                }).setDepth(depth);
+                scene.walls.add(wall);
             }
-        }
-
-        // Portal
-        if (currentLevelData.portal) {
-            const portal = new Portal(scene, currentLevelData.portal.x, currentLevelData.portal.y);
-            if (currentLevelData.portal.targetLevel !== undefined) {
-                portal.targetLevel = currentLevelData.portal.targetLevel;
-            }
-            scene.portals.add(portal);
-        }
-
-    } else {
-        // PROCEDURAL GENERATION (Default)
-        player.setPosition(0, 0); // Player at standard 0,0
-        player.spawnPoint = { x: 0, y: 0 }; // Reset respawn point
-        scene.rebornSprite = scene.add.sprite(player.spawnPoint.x, player.spawnPoint.y + REBORN_SPRITE_OFFSET_Y, 'reborn_place_sheet', 0).setDepth(-19998);
-        scene.rebornSprite.play('reborn-activate');
-
-        const roomKeysRequired = []; // Track keys needed
-        const roomCount = Phaser.Math.Between(2, 3); // Guaranteed at least 2 rooms
-        const tileSize = 112;
-        let portalPosition = null;
-
-        for (let i = 0; i < roomCount; i++) {
-            let sx, sy, attempts = 0;
-            // Larger rooms: 5x5 to 8x8
-            let w = Phaser.Math.Between(5, 8);
-            let h = Phaser.Math.Between(5, 8);
-            const roomW = w * tileSize;
-            const roomH = h * tileSize;
-
-            do {
-                attempts++;
-                // Target inner map area (-600 to 600) to stay far from world borders
-                sx = Phaser.Math.Between(-600, 600);
-                sy = Phaser.Math.Between(-600, 400);
-
-                const startX = sx - roomW / 2;
-                const startY = sy - roomH / 2;
-                // Buffer to keep rooms apart and walls accessible
-                const newRoomRect = new Phaser.Geom.Rectangle(startX - 150, startY - 150, roomW + 300, roomH + 300);
-
-                let overlaps = false;
-                for (let establishedRoom of scene.rooms) {
-                    if (Phaser.Geom.Intersects.RectangleToRectangle(newRoomRect, establishedRoom)) {
-                        overlaps = true;
-                        break;
-                    }
-                }
-
-                const distFromSpawn = Phaser.Math.Distance.Between(sx, sy, player.spawnPoint.x, player.spawnPoint.y);
-                // Ensure room center is far enough, PLUS check if any corner is too close would be better,
-                // but for now let's just ensure the center is at least (safe_zone + room_radius) away.
-                // approximating room radius as half width.
-                const safeDist = REBORN_SAFE_ZONE_RADIUS + (Math.max(roomW, roomH) / 2) + 50;
-
-                if (!overlaps && distFromSpawn > safeDist) {
-                    const keyId = `KEY_ROOM_${i + 1}`;
-                    roomKeysRequired.push(keyId);
-
-                    // Designate one room as the portal room (typically the furthest or just the last one)
-                    const isPortalRoom = (i === roomCount - 1);
-                    if (isPortalRoom) {
-                        portalPosition = { x: sx, y: sy };
-                    }
-
-                    createStructure(sx, sy, w, h, keyId, { addChest: !isPortalRoom });
-                    break;
-                }
-            } while (attempts < 50);
-        }
-
-        // Helper: Check if position is safe (away from borders, rooms, and other objects)
-        const isSafePos = (x, y, margin = 80) => {
-            // Check Map Borders
-            if (Math.abs(x) > 780 || Math.abs(y) > 780) return false;
-
-            // Check Rooms
-            for (let room of scene.rooms) {
-                const expandedRoom = new Phaser.Geom.Rectangle(room.x - margin, room.y - margin, room.width + 2 * margin, room.height + 2 * margin);
-                if (expandedRoom.contains(x, y)) return false;
-            }
-
-            // Check Spawn
-            if (Phaser.Math.Distance.Between(x, y, player.spawnPoint.x, player.spawnPoint.y) < REBORN_SAFE_ZONE_RADIUS) return false;
-
-            // Check against existing objects to prevent overlap
-            // Helper to check group
-            const checkGroup = (group, minDist) => {
-                if (!group) return true;
-                const children = group.getChildren();
-                for (let child of children) {
-                    if (child.active) {
-                        if (Phaser.Math.Distance.Between(x, y, child.x, child.y) < minDist) return false;
-                    }
-                }
-                return true;
-            };
-
-            // Check all critical groups
-            // Rocks/Obstacles: Spread out (100px)
-            if (!checkGroup(scene.obstacles, 100)) return false;
-            // Traps: Well spread (150px)
-            if (!checkGroup(scene.traps, 150)) return false;
-            if (!checkGroup(scene.holdingTraps, 150)) return false;
-            // Interactables/Chests: (100px)
-            if (!checkGroup(scene.interactables, 100)) return false;
-            // Enemies: (80px)
-            if (!checkGroup(scene.enemies, 80)) return false;
-            // Portals: (150px)
-            if (!checkGroup(scene.portals, 150)) return false;
-
-            return true;
         };
 
-        if (!hasManualWalls) {
-            // 4. Dirt Patches (Decorations)
-            for (let i = 0; i < 200; i++) {
-                let x, y, attempts = 0;
-                do {
-                    x = Phaser.Math.Between(-850, 850);
-                    y = Phaser.Math.Between(-850, 850);
-                    attempts++;
-                } while (!isSafePos(x, y, 20) && attempts < 20);
+        const iterTiles = (data, defDepth) => {
+            if (!data) return;
+            if (Array.isArray(data)) data.forEach(t => spawnTile(t.x, t.y, t.frame || 0, t.rotation || 0, t.texture, t.depth ?? defDepth));
+            else Object.values(data).forEach(g => g.tiles.forEach(t => spawnTile(t[0], t[1], t[2] || 0, t[3] || 0, g.texture, g.depth ?? defDepth)));
+        };
 
-                if (attempts < 20) {
-                    const angle = Phaser.Math.Between(0, 3) * 90;
-                    const dirt = scene.add.image(x, y, 'dirt')
-                        .setAngle(angle)
-                        .setDepth(-19999) // Above ground (-20000) but below reborn/shadows
-                    //.setAlpha(0.6); // Subtle detail
-                    scene.dirtDecorations.add(dirt);
-                }
-            }
+        iterTiles(currentLevelData.walls, -40000);
+        iterTiles(currentLevelData.visualTiles, -35000);
 
-            // 4. Rocks
-            for (let i = 0; i < 12 + (currentLevel * 2); i++) {
-                let x, y, attempts = 0;
-                do {
-                    x = Phaser.Math.Between(-850, 850);
-                    y = Phaser.Math.Between(-850, 850);
-                    attempts++;
-                } while (!isSafePos(x, y, 40) && attempts < 20);
+        if (currentLevelData.portal) scene.portals.add(new Portal(scene, currentLevelData.portal.x, currentLevelData.portal.y));
 
-                if (attempts < 20) {
-                    const randomFrame = Phaser.Math.Between(0, 3);
-                    const rock = scene.add.image(x, y, 'rock', randomFrame);
-                    rock.setDepth(y); // Profundidade correta
-                    scene.dirtDecorations.add(rock); // Fix leak
+    } else {
+        console.warn("Level " + currentLevel + " missing data or is procedural (logic for procedural pending).");
+    }
+}
 
-                    // 2. Colisor Invisível na base
-                    const baseY = y + 12;
-                    const baseX = x - 8;
-                    const rockBase = scene.obstacles.create(baseX, baseY, null); // Cria no grupo de obstáculos
-                    rockBase.setVisible(false); // Invisível
-                    const radius = 24;
-                    rockBase.body.setCircle(radius); // Círculo de raio 15
-                }
-            }
-        }
-
-        // 5. Enemies (Scale with level)
-        let keysAssigned = 0;
-        for (let i = 0; i < 3 + currentLevel; i++) {
-            let x, y, attempts = 0;
-            do {
-                x = Phaser.Math.Between(-850, 850);
-                y = Phaser.Math.Between(-850, 850);
-                attempts++;
-            } while (!isSafePos(x, y, 100) && attempts < 20);
-            if (attempts < 20) {
-                // Randomly choose between types
-                const rand = Math.random();
-                let enemy;
-                if (rand < 0.25) {
-                    enemy = new SkeletonEnemy(scene, x, y);
-                } else if (rand < 0.50) {
-                    enemy = new Enemy(scene, x, y);
-                } else if (rand < 0.75) {
-                    enemy = new SkullBugEnemy(scene, x, y);
-                } else {
-                    enemy = new VamBatEnemy(scene, x, y);
-                }
-
-                if (keysAssigned < roomKeysRequired.length) {
-                    enemy.forcedLoot = { type: 'KEY', extra: { keyId: roomKeysRequired[keysAssigned] } };
-                    enemy.restoreTint(); // Apply gold tint immediately
-                    keysAssigned++;
-                }
-                scene.enemies.add(enemy);
-            }
-        }
-
-        // 5a. Swarms (SkullBugs and VamBats)
-        for (let i = 0; i < 6 + (currentLevel * 2); i++) {
-            let x, y, attempts = 0;
-            do {
-                x = Phaser.Math.Between(-850, 850);
-                y = Phaser.Math.Between(-850, 850);
-                attempts++;
-            } while (!isSafePos(x, y, 100) && attempts < 20);
-            if (attempts < 20) {
-                const isBat = Math.random() > 0.5;
-                const enemy = isBat ? new VamBatEnemy(scene, x, y) : new SkullBugEnemy(scene, x, y);
-                scene.enemies.add(enemy);
-            }
-        }
-        for (let i = 0; i < 2 + Math.floor(currentLevel / 2); i++) {
-            let x, y, attempts = 0;
-            do {
-                x = Phaser.Math.Between(-850, 850);
-                y = Phaser.Math.Between(-850, 850);
-                attempts++;
-            } while (!isSafePos(x, y, 100) && attempts < 20);
-            if (attempts < 20) {
-                scene.enemies.add(new RangedEnemy(scene, x, y));
-            }
-        }
-
-        // 6. Interactables
-        const randomDir = () => Phaser.Math.RND.pick(['up', 'down', 'left', 'right']);
-
-        // Chest is placed at a fixed position, ensure it's safe
-        let chestX = -200;
-        let chestY = 200;
-        if (isSafePos(chestX, chestY)) {
-            scene.interactables.add(new Chest(scene, chestX, chestY, { type: 'COIN', value: 50 }, { direction: randomDir() }));
+function nextLevel(scene, targetLevelIndex = undefined) {
+    scene.sound.play('NextLevel');
+    if (targetLevelIndex !== undefined) {
+        currentLevel = targetLevelIndex;
+    } else {
+        if (currentLevel >= MAX_LEVELS) {
+            console.log("GAME VICTORY");
+            currentLevel = 1; // Reset to Level 1 (Tutorial deleted)
+            console.log("Resetting to Level 1");
         } else {
-            // Fallback if fixed chest position is unsafe
-            let x, y, attempts = 0;
-            do {
-                x = Phaser.Math.Between(-850, 850);
-                y = Phaser.Math.Between(-850, 850);
-                attempts++;
-            } while (!isSafePos(x, y) && attempts < 20);
-            if (attempts < 20) {
-                scene.interactables.add(new Chest(scene, x, y, { type: 'COIN', value: 50 }, { direction: randomDir() }));
-            }
-        }
-
-
-        // Traps
-        for (let i = 0; i < 3 + currentLevel; i++) {
-            let x, y, attempts = 0;
-            do {
-                x = Phaser.Math.Between(-850, 850);
-                y = Phaser.Math.Between(-850, 850);
-                attempts++;
-            } while (!isSafePos(x, y) && attempts < 20);
-            if (attempts < 20) {
-                scene.traps.add(new Trap(scene, x, y));
-            }
-        }
-
-        let hx, hy, hatts = 0;
-        do {
-            hx = Phaser.Math.Between(-600, 600);
-            hy = Phaser.Math.Between(-600, 600);
-            hatts++;
-        } while (!isSafePos(hx, hy) && hatts < 20);
-        if (hatts < 20) {
-            scene.holdingTraps.add(new HoldingTrap(scene, hx, hy));
-        }
-
-        // 7. PORTAL (Goal)
-        if (portalPosition) {
-            // Place portal in the center of the designated portal room
-            scene.portals.add(new Portal(scene, portalPosition.x, portalPosition.y));
-        } else {
-            // Fallback: place far from center if no room was created
-            let px, py, patts = 0;
-            do {
-                px = Phaser.Math.Between(600, 800) * (Math.random() > 0.5 ? 1 : -1);
-                py = Phaser.Math.Between(600, 800) * (Math.random() > 0.5 ? 1 : -1);
-                patts++;
-            } while (!isSafePos(px, py) && patts < 20);
-            if (patts < 20) {
-                scene.portals.add(new Portal(scene, px, py));
-            }
+            currentLevel++;
         }
     }
+
+    // Destruir tilemap Phaser ativo (se houver)
+    // Destroy tile collision layer references FIRST (they are processed manually each frame)
+    scene.tileCollisionLayers = [];
+    scene.tiledColliders = [];
+    if (scene.activeTiledLayers) {
+        scene.activeTiledLayers.forEach(l => l.destroy());
+        scene.activeTiledLayers = [];
+    }
+    if (scene.activeTiledMap) {
+        scene.activeTiledMap.destroy();
+        scene.activeTiledMap = null;
+    }
+
+    // Clear Level
+    scene.groundLayer.clear(true, true);
+    scene.walls.clear(true, true);
+    scene.innerWalls.clear(true, true);
+    scene.obstacles.clear(true, true);
+    scene.enemies.clear(true, true);
+    scene.projectiles.clear(true, true);
+    scene.interactables.clear(true, true);
+    scene.items.clear(true, true);
+    scene.traps.clear(true, true);
+    scene.holdingTraps.clear(true, true);
+    scene.portals.clear(true, true);
+    scene.runes.clear(true, true);
+    scene.dirtDecorations.clear(true, true);
+    scene.wallSprites.clear(false, false);  // Wall objects already destroyed by walls.clear above — only remove refs
+    scene.debugShapes.clear(true, true);
+
+    // Force Phaser physics debug renderer to clear stale body outlines
+    if (scene.physics.world.debugGraphic) {
+        scene.physics.world.debugGraphic.clear();
+    }
+    // Destroy spawn marker if exists
+    if (scene.rebornSprite) {
+        scene.rebornSprite.destroy();
+        scene.rebornSprite = null;
+    }
+
+    // Reset Player state (position will be handled by generateLevel)
+    player.heal(100);
+
+    // Generate New
+    generateLevel(scene);
+    player.triggerSpawnEffect();
 }
 
 
@@ -1665,11 +1545,21 @@ function nextLevel(scene, targetLevelIndex = undefined) {
             console.log("GAME VICTORY");
             // Reset to level 1 for endless loop or stop? User said "path of no return".
             // Let's loop for now or keep increasing difficulty
-            currentLevel = 0; // Reset to Tutorial or Level 1?
-            console.log("Resetting to Tutorial");
+            currentLevel = 1; // Reset to Level 1 (Tutorial deleted)
+            console.log("Resetting to Level 1");
         } else {
             currentLevel++;
         }
+    }
+
+    // Destruir tilemap Phaser ativo (se houver)
+    if (scene.activeTiledLayers) {
+        scene.activeTiledLayers.forEach(l => l.destroy());
+        scene.activeTiledLayers = [];
+    }
+    if (scene.activeTiledMap) {
+        scene.activeTiledMap.destroy();
+        scene.activeTiledMap = null;
     }
 
     // Clear Level
@@ -1706,3 +1596,155 @@ function nextLevel(scene, targetLevelIndex = undefined) {
     generateLevel(scene);
     player.triggerSpawnEffect();
 }
+
+function setupInventoryClicks() {
+    const grid = document.getElementById('backpack-grid');
+    if (!grid) return;
+
+    // Use event delegation for dynamic slots
+    grid.addEventListener('click', (e) => {
+        const slot = e.target.closest('.inventory-slot');
+        if (!slot) return;
+
+        const type = slot.dataset.type;
+        if (type && ITEM_METADATA[type] && ITEM_METADATA[type].usable) {
+            if (player.inventory[type] > 0) {
+                // Determine usage logic based on type
+                let used = false;
+                if (type === 'health') {
+                    used = player.useItem(type);
+                } else if (type === 'stamina') {
+                    if (player.stamina < player.maxStamina) {
+                        player.stamina = player.maxStamina;
+                        player.scene.showPopup("Stamina Refilled!", player.x, player.y - 50);
+                        used = true;
+                    } else {
+                        player.scene.showPopup("Full Stamina!", player.x, player.y - 50);
+                    }
+                } else {
+                    used = player.useItem(type);
+                }
+
+                if (used) {
+                    player.inventory[type]--;
+                    updateInventoryUI(type, player.inventory[type]);
+                }
+            }
+        }
+    });
+}
+
+function updateStatusUI() {
+    if (!player) return;
+
+    // Health
+    const hpPercent = Phaser.Math.Clamp((player.hp / player.maxHp) * 100, 0, 100);
+    const hpBar = document.getElementById('bar-health');
+    const hpText = document.getElementById('text-health');
+    if (hpBar) hpBar.style.width = `${hpPercent}%`;
+    if (hpText) hpText.innerText = `${Math.ceil(player.hp)}/${player.maxHp}`;
+
+    // Stamina
+    const stPercent = Phaser.Math.Clamp((player.stamina / player.maxStamina) * 100, 0, 100);
+    const stBar = document.getElementById('bar-stamina');
+    const stText = document.getElementById('text-stamina');
+    if (stBar) stBar.style.width = `${stPercent}%`;
+    if (stText) stText.innerText = `${Math.ceil(player.stamina)}/${player.maxStamina}`;
+
+    // Helper for Cooldowns: (1 - timer/max) * 100
+    const updateBar = (id, current, max) => {
+        const bar = document.getElementById(id);
+        if (bar) {
+            const pct = Math.max(0, (1 - (current / max)) * 100);
+            bar.style.width = `${pct}%`;
+
+            if (pct >= 99) {
+                bar.classList.add('ready');
+                bar.classList.remove('charging');
+            } else {
+                bar.classList.add('charging');
+                bar.classList.remove('ready');
+            }
+        }
+    };
+
+    updateBar('bar-dash', player.dashCooldownTimer, player.dashCooldown);
+    updateBar('bar-kick', player.jumpKickCooldownTimer, player.jumpKickCooldown);
+    updateBar('bar-roar', player.roarTimer, player.roarCooldown);
+    updateBar('bar-pound', player.poundTimer, player.poundCooldown);
+
+    // Update Portrait Expression
+    const portrait = document.getElementById('player-profile-img');
+    if (portrait) {
+        portrait.className = 'profile-img';
+
+        if (player.isDead || player.hp <= 0) {
+            portrait.classList.add('dead');
+        } else if (player.isHurt) {
+            portrait.classList.add('hurt');
+        } else if (player.isAttacking || player.isJumpKicking || player.isGroundDashing || player.isRoaring || player.isPounding) {
+            portrait.classList.add('action');
+        } else if (player.isPickingUp) {
+            portrait.classList.add('pickup');
+        } else if (player.hp < player.maxHp / 2) {
+            portrait.classList.add('low-hp');
+        } else {
+            portrait.classList.add('base');
+        }
+    }
+}
+
+// Helper to update HTML UI
+function updateInventoryUI(type, count) {
+    if (!player) return;
+    if (!player.inventoryOrder) player.inventoryOrder = [];
+
+    const typeLower = type.toLowerCase();
+
+    // Manage acquisition order
+    if (count > 0) {
+        if (!player.inventoryOrder.includes(typeLower)) {
+            player.inventoryOrder.push(typeLower);
+        }
+    } else {
+        player.inventoryOrder = player.inventoryOrder.filter(t => t !== typeLower);
+    }
+
+    renderBackpack();
+}
+
+function renderBackpack() {
+    if (!player) return;
+
+    for (let i = 0; i < 10; i++) {
+        const slotEl = document.getElementById(`slot-${i}`);
+        if (!slotEl) continue;
+
+        const itemType = player.inventoryOrder[i];
+        if (itemType && ITEM_METADATA[itemType]) {
+            const meta = ITEM_METADATA[itemType];
+            let count = 0;
+            if (itemType === 'coin') count = player.coins;
+            else if (itemType === 'key') count = player.keys.length;
+            else count = player.inventory[itemType] || 0;
+
+            if (count > 0) {
+                slotEl.classList.remove('empty');
+                slotEl.title = meta.title;
+                slotEl.dataset.type = itemType;
+                slotEl.innerHTML = `
+                    <div class="inventory-icon">${meta.icon}</div>
+                    <div class="item-count">${count}</div>
+                `;
+                continue;
+            }
+        }
+
+        // Default empty state
+        slotEl.classList.add('empty');
+        slotEl.title = "";
+        slotEl.dataset.type = "";
+        slotEl.innerHTML = "";
+    }
+}
+
