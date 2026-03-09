@@ -65,7 +65,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             scene.anims.create({
                 key: `walk-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 12, repeat: -1
+                frameRate: 10, repeat: -1
             });
             scene.anims.create({
                 key: `idle-${dir}`,
@@ -75,12 +75,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             scene.anims.create({
                 key: `punch-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_punch', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 12, repeat: 0
+                frameRate: 10, repeat: 0
             });
             scene.anims.create({
                 key: `punch-idle-${dir}`,
                 frames: scene.anims.generateFrameNumbers('warrior_punch_idle', { start: rowIndex * 8, end: (rowIndex * 8) + 7 }),
-                frameRate: 12, repeat: 0
+                frameRate: 10, repeat: 0
             });
             scene.anims.create({
                 key: `jump-${dir}`,
@@ -218,7 +218,16 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.isDefending = false;
         this.isReborning = false;
         this.isPickingUp = false;
+        this.isBurning = false;
+        this.isParalyzed = false;
         this.pickupTimer = null;
+
+        // Regeneration (Regen Over Time)
+        this.regenTime = 0;              // Current remaining duration of the regen effect (ms)
+        this.regenMaxTime = 45000;       // Cap for the regen duration
+        this.regenTickTimer = 0;         // Timer for the next heal tick (ms)
+        this.regenTickInterval = 5000;   // Interval between heals (5s)
+        this.regenAmountPerTick = 5;     // Amount to heal each tick (5 HP)
 
         this.lastDamageTime = -1000;
 
@@ -264,6 +273,14 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.shieldFx = null;
         this.shieldFxActive = false;
 
+        // Energy Shield
+        this.energyShieldActive = false;
+        this.energyShieldTimer = 0;
+        this.energyShieldDuration = 5000;
+        this.energyShieldCooldownTimer = 0;
+        this.energyShieldCooldown = 15000;
+
+
         // Roar State
         this.isRoaring = false;
         this.roarDamageDealt = false;
@@ -308,6 +325,33 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.shadow.setDepth(-19997); // Above reborn place (-19998)
         this.shadow.resetPipeline(); // Shadows should not use Light2D pipeline
 
+        // --- BURNING PARTICLES ---
+        if (!scene.textures.exists('pixel_white')) {
+            const graphics = scene.make.graphics();
+            graphics.fillStyle(0xffffff);
+            graphics.fillRect(0, 0, 5, 5);
+            graphics.generateTexture('pixel_white', 5, 5);
+        }
+
+        this.fireParticles = scene.add.particles(0, 0, 'pixel_white', {
+            speed: { min: 10, max: 30 },
+            scale: { start: 0.5, end: 0 },
+            alpha: { start: 1, end: 0 },
+            lifespan: { min: 500, max: 900 },
+            tint: [0xff4400, 0xff8800, 0xff2200, 0xffff00],
+            frequency: 25,
+            gravityY: -50,
+            emitZone: {
+                type: 'random',
+                source: new Phaser.Geom.Rectangle(-15, -35, 30, 45) // Define a rectangle area (x, y, width, height)
+            },
+            blendMode: 'ADD',
+            follow: this,
+            followOffset: { y: 15 },
+            emitting: false
+        });
+        this.fireParticles.setDepth(this.depth + 1);
+
         // --- SOUND EVENTS ---
         this.on('animationupdate', (anim, frame) => {
             if (anim.key.startsWith('punch-') || anim.key.startsWith('punch-idle-')) {
@@ -351,11 +395,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
     update(time, delta) {
         if (this.isReborning) {
-            this.setVelocity(0); // Motion lock while reborning
+            if (this.body) this.setVelocity(0, 0); // Motion lock while reborning
             // Shadow stays under center
             if (this.shadow) {
                 this.shadow.setPosition(this.x, this.y + 40);
             }
+            if (this.fireParticles) this.fireParticles.emitting = false;
             return;
         }
 
@@ -365,6 +410,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             if (this.shadow) {
                 this.shadow.setPosition(this.x, this.y + 40);
             }
+            if (this.fireParticles) this.fireParticles.emitting = false;
             return;
         }
 
@@ -372,6 +418,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.shadow) {
             this.shadow.setPosition(this.x, this.y + (this.body.height / 2) - 5);
             this.shadow.setDepth(-19997);
+        }
+
+        // Update Fire Particles
+        if (this.fireParticles) {
+            this.fireParticles.emitting = this.isBurning;
+            this.fireParticles.setDepth(this.depth + 1);
         }
 
         let moveX = 0;
@@ -451,7 +503,23 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             }
         }
 
-        // Tint Logic (Priority: Strength > Speed)
+        // Handle Regeneration (Meat/Ham)
+        if (this.regenTime > 0) {
+            this.regenTime -= delta;
+            this.regenTickTimer += delta;
+            if (this.regenTickTimer >= this.regenTickInterval) {
+                if (this.hp < this.maxHp) {
+                    this.heal(this.regenAmountPerTick);
+                }
+                this.regenTickTimer = 0;
+            }
+            if (this.regenTime <= 0) {
+                this.regenTime = 0;
+                this.regenTickTimer = 0;
+            }
+        }
+
+        // Tint Logic (Priority: Strength > Action > Speed > Status)
         if (this.strengthBoostTimer > 0) {
             const t = scene.time.now / 100;
             this.setTint(0xffd700);
@@ -461,6 +529,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             this.alpha = 1;
         } else if (this.speedBoostTimer > 0) {
             this.setTint(0x88ccff);
+            this.alpha = 1;
+        } else if (this.isParalyzed && time > this.lastDamageTime + 200) {
+            this.setTint(0x99ccff); // Light Blue for paralysis
+            this.alpha = 1;
+        } else if (this.isBurning && time > this.lastDamageTime + 200) {
+            this.setTint(0xffb266); // Light Orange for burning
             this.alpha = 1;
         } else {
             if (this.hp > 0 && !this.isDead) {
@@ -485,9 +559,29 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             }
         }
 
+        // Energy Shield Logic
+        if (Phaser.Input.Keyboard.JustDown(this.defenseKey) && this.energyShieldCooldownTimer <= 0 && this.altitude === 0 && !this.isTrapped) {
+            this.energyShieldActive = true;
+            this.energyShieldTimer = this.energyShieldDuration;
+            this.scene.sound.play('Barrier'); // Changed from 'Powerup' to 'Barrier'
+        }
+
+        if (this.energyShieldActive) {
+            this.energyShieldTimer -= delta;
+            if (this.energyShieldTimer <= 0) {
+                this.energyShieldActive = false;
+                this.energyShieldCooldownTimer = this.energyShieldCooldown;
+            }
+        } else {
+            if (this.energyShieldCooldownTimer > 0) {
+                this.energyShieldCooldownTimer -= delta;
+            }
+        }
+
         // Handle Defense Input
         this.isDefending = this.defenseKey.isDown && this.altitude === 0 && !this.isAttacking && !this.isJumpStartup && !this.isGroundDashing && !this.isJumpKicking && this.actionLockTimer <= 0 && !this.isTrapped;
         this.updateShieldFx();
+
 
 
         // Detect Jump (SPACE)
@@ -516,7 +610,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
                 if (dashX !== 0 || dashY !== 0) {
                     let dashVec = new Phaser.Math.Vector2(dashX, dashY).normalize().scale(this.jumpKickDashPower);
-                    this.setVelocity(dashVec.x, dashVec.y);
+                    if (this.body) this.setVelocity(dashVec.x, dashVec.y);
                 }
             }
         }
@@ -542,7 +636,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         // CANNOT Jump if Trapped
         if (this.isJumpStartup && !this.isTrapped) {
             this.jumpStartupCounter++;
-            this.setVelocity(0);
+            if (this.body) this.setVelocity(0, 0);
             if (this.jumpStartupCounter >= this.jumpStartupFrames) {
                 this.zVelocity = this.jumpStrength;
                 this.isJumpStartup = false;
@@ -565,12 +659,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
             if (dashX !== 0 || dashY !== 0) {
                 let dashVec = new Phaser.Math.Vector2(dashX, dashY).normalize().scale(currentPower);
-                this.setVelocity(dashVec.x, dashVec.y);
+                if (this.body) this.setVelocity(dashVec.x, dashVec.y);
             }
 
             if (this.jumpKickTimer <= 0) {
                 this.isJumpKicking = false;
-                this.setVelocity(0);
+                if (this.body) this.setVelocity(0, 0);
                 this.zVelocity = this.jumpKickEndBoost;
             }
         } else if (this.isGroundDashing) {
@@ -587,12 +681,12 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
             if (dashX !== 0 || dashY !== 0) {
                 let dashVec = new Phaser.Math.Vector2(dashX, dashY).normalize().scale(currentPower);
-                this.setVelocity(dashVec.x, dashVec.y);
+                if (this.body) this.setVelocity(dashVec.x, dashVec.y);
             }
 
             if (this.groundDashTimer <= 0) {
                 this.isGroundDashing = false;
-                this.setVelocity(0);
+                if (this.body) this.setVelocity(0, 0);
             }
         } else {
             // Normal Gravity
@@ -612,7 +706,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         // Player locked in direction during jump kick (and after dash until landing)
         // Also locked if Trapped
         if (this.isTrapped) {
-            this.setVelocity(0); // Cannot move
+            if (this.body) this.setVelocity(0, 0); // Cannot move
 
             // Allow changing direction in place
             if (this.cursors.left.isDown || this.wasd.left.isDown) moveX = -1;
@@ -636,10 +730,10 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             }
         }
         else if (this.actionLockTimer > 0 || this.isHurt || this.isReborning) {
-            this.setVelocity(0); // Locked by action (Roar/Pound) or Hurt status or Reborning
+            if (this.body) this.setVelocity(0, 0); // Locked by action (Roar/Pound) or Hurt status or Reborning
         }
         else if (!this.isJumpStartup && !this.isJumpKicking && !this.isGroundDashing && !this.hasJumpKicked) {
-            this.setVelocity(0);
+            if (this.body) this.setVelocity(0, 0);
             if (this.cursors.left.isDown || this.wasd.left.isDown) moveX = -1;
             else if (this.cursors.right.isDown || this.wasd.right.isDown) moveX = 1;
 
@@ -653,7 +747,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
             if (moveX !== 0 || moveY !== 0) {
                 let vec = new Phaser.Math.Vector2(moveX, moveY).normalize().scale(this.currentSpeed);
-                this.setVelocity(vec.x, vec.y);
+                if (this.body) this.setVelocity(vec.x, vec.y);
 
                 let isDiagonal = (moveX !== 0 && moveY !== 0);
                 let newDir = this.lastDirection;
@@ -814,8 +908,30 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.isDead) return false;
         if (this.hasJumpKicked) return false; // Immunity during Jump Kick until landing
 
-        if (this.isDefending) amount = amount / 2;
+        let damageMultiplier = 1;
+
+        if (this.energyShieldActive && this.isDefending) {
+            damageMultiplier = 0; // Nullify all damage
+        } else if (this.energyShieldActive || this.isDefending) {
+            damageMultiplier = 0.5; // Half damage
+        }
+
+        amount = amount * damageMultiplier;
         amount = Math.round(amount);
+
+        if (amount === 0 && damageMultiplier === 0) {
+            // Perfect block feedback
+            this.scene.sound.play('Barrier', { volume: 0.8 });
+            if (this.scene.showDamagePopup) {
+                this.scene.showDamagePopup("Block!", this.x, this.y, '#88ccff');
+            }
+            // Small pushback for feedback
+            if (pushbackVector && this.body) {
+                const vec = new Phaser.Math.Vector2(pushbackVector.x, pushbackVector.y).normalize().scale(100);
+                if (this.body) this.setVelocity(vec.x, vec.y);
+            }
+            return false;
+        }
 
         this.hp = Math.max(0, this.hp - amount);
         console.log("Player HP:", this.hp);
@@ -831,20 +947,25 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
         this.lastDamageTime = this.scene.time.now;
 
-        // When defending: don't move to hurt state (keeps shield anim), weaker tint, weaker shake
-        if (!this.isDefending) {
+        const isUsingSkill = this.isRoaring || this.isPounding || this.isJumpKicking || this.isGroundDashing || this.isAttacking || this.isJumpStartup;
+
+        // When defending or shielded: don't move to hurt state
+        if (this.isDefending || this.energyShieldActive) {
+            this.setTint(0xffaaaa); // Lighter red
+            this.scene.cameras.main.shake(100, 0.002); // Weaker shake
+        } else if (isUsingSkill) {
+            // Hyper-armor: taking damage while performing a skill/attack flashes red but doesn't interrupt
+            this.setTint(0xff0000);
+            this.scene.cameras.main.shake(100, 0.005);
+        } else {
+            // Normal damage: interrupt and play hurt animation
             this.isHurt = true;
             this.setTint(0xff0000);
             this.scene.cameras.main.shake(100, 0.005);
             this.actionLockTimer = 250; // Lock actions briefly to ensure hurt animation shows
-        } else {
-            // Defending: no isHurt flag (so no hurt animation)
-            this.setTint(0xffaaaa); // Lighter red
-            this.scene.cameras.main.shake(100, 0.002); // Weaker shake
+            this.isAttacking = false;
+            this.graceCounter = 0;
         }
-
-        this.isAttacking = false;
-        this.graceCounter = 0;
 
         this.scene.time.delayedCall(250, () => {
             if (this.active && !this.isDead) {
@@ -876,7 +997,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.isPounding = false;
         this.graceCounter = 0;
 
-        this.setVelocity(0);
+        if (this.body) this.setVelocity(0, 0);
         this.disableBody(false, false);
         this.scene.sound.play('Die');
 
@@ -900,8 +1021,15 @@ class Player extends Phaser.Physics.Arcade.Sprite {
                             this.setVisible(false);
                             if (this.shadow) this.shadow.setVisible(false);
 
-                            this.scene.time.delayedCall(this.respawnDelay, () => {
-                                this.respawn();
+                            // Fade out the HTML overlay to black
+                            const overlay = document.getElementById('global-fade-overlay');
+                            if (overlay) overlay.classList.add('active');
+
+                            // Wait for CSS transition (800ms) then wait 500ms before respawn
+                            this.scene.time.delayedCall(800, () => {
+                                this.scene.time.delayedCall(500, () => {
+                                    this.respawn();
+                                });
                             });
                         }
                     });
@@ -934,10 +1062,15 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         this.isAttacking = false;
         this.isTrapped = false;
         this.isHurt = false;
+        this.isBurning = false;
+        this.isParalyzed = false;
+        this.energyShieldActive = false;
+        this.energyShieldTimer = 0;
 
         // Reset Cooldowns
         this.dashCooldownTimer = 0;
         this.jumpKickCooldownTimer = 0;
+        this.energyShieldCooldownTimer = 0;
         this.roarTimer = 0;
         this.poundTimer = 0;
         this.actionLockTimer = 0;
@@ -958,6 +1091,10 @@ class Player extends Phaser.Physics.Arcade.Sprite {
 
         // Notify scene to trigger reborn effects
         this.scene.events.emit('player-respawned');
+
+        // Fade in the HTML overlay from black
+        const overlay = document.getElementById('global-fade-overlay');
+        if (overlay) overlay.classList.remove('active');
     }
 
     triggerSpawnEffect(duration = 1000) {
@@ -1085,38 +1222,75 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     useItem(type) {
         console.log("Using Item:", type);
         this.scene.sound.play('Item');
+
+        const foodMessages = ["Yummy", "Huuuum", "=D"];
+        const consumableMessages = ["Yikes", "Eca", "Blurph"];
+        const itemBlue = "#4444ff"; // Tom de azul um pouco mais claro como pedido
+
+        let used = false;
+
         switch (type) {
             case 'health':
                 if (this.hp < this.maxHp) {
                     this.heal(30);
                     if (this.hp > this.maxHp) this.hp = this.maxHp;
-                    return true;
+                    used = true;
                 }
-                return false;
+                break;
             case 'stamina':
                 if (this.stamina < this.maxStamina) {
                     this.stamina = this.maxStamina;
-                    console.log("Stamina Restored");
-                    return true;
+                    used = true;
                 }
-                return false;
+                break;
             case 'speed':
                 this.applySpeedBoost(5000);
-                return true;
+                used = true;
+                break;
             case 'strength':
                 this.applyStrengthBoost(5000);
-                return true;
+                used = true;
+                break;
             case 'torch':
-                triggerTorchBoost(this.scene);
+                if (typeof triggerTorchBoost === 'function') {
+                    triggerTorchBoost(this.scene);
+                    used = true;
+                }
+                break;
+            case 'meat':
+                if (this.regenTime > 30000) {
+                    this.scene.showPopup("Estufado", this.x, this.y - 50, itemBlue);
+                    return false;
+                }
+                this.regenTime = Math.min(this.regenTime + 15000, this.regenMaxTime);
+                this.scene.showPopup(foodMessages[Math.floor(Math.random() * foodMessages.length)], this.x, this.y - 50, itemBlue);
+                return true;
+            case 'ham':
+                if (this.regenTime > 30000) {
+                    this.scene.showPopup("Estufado", this.x, this.y - 50, itemBlue);
+                    return false;
+                }
+                this.regenTime = this.regenMaxTime; // Max it out to 45s
+                this.scene.showPopup(foodMessages[Math.floor(Math.random() * foodMessages.length)], this.x, this.y - 50, itemBlue);
                 return true;
             default:
                 return false;
         }
+
+        if (used) {
+            // Random message for pots/consumables
+            const msg = consumableMessages[Math.floor(Math.random() * consumableMessages.length)];
+            this.scene.showPopup(msg, this.x, this.y - 50, itemBlue);
+        }
+
+        return used;
     }
 
 
     updateShieldFx() {
-        if (this.isDefending && !this.shieldFxActive) {
+        const shouldShowFx = this.energyShieldActive;
+
+        if (shouldShowFx && !this.shieldFxActive) {
             this.shieldFxActive = true;
             this.scene.sound.play('Barrier', { volume: 0.6 });
 
@@ -1141,7 +1315,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
                 }
             });
         }
-        else if (!this.isDefending && this.shieldFxActive) {
+        else if (!shouldShowFx && this.shieldFxActive) {
             this.shieldFxActive = false;
 
             if (this.shieldFx) {

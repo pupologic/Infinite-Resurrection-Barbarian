@@ -139,7 +139,7 @@ class Chest extends Phaser.Physics.Arcade.Sprite {
                             type = this.contents.extraDrops[i - 1].toUpperCase();
                         } else {
                             // Subsequent items are randomized (No keys in random pool)
-                            const pool = ['COIN', 'HEALTH', 'STAMINA', 'SPEED', 'STRENGTH'];
+                            const pool = ['COIN', 'HEALTH', 'STAMINA', 'SPEED', 'STRENGTH', 'MEAT', 'MEAT', 'HAM'];
                             type = pool[Phaser.Math.Between(0, pool.length - 1)];
                         }
                         itemCategory = type.toLowerCase();

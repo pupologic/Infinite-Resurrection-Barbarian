@@ -78,6 +78,11 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
             align: 'center',
             resolution: 2            // forçar resolução double no canvas do texto
         }).setOrigin(0.5).setScale(0.5).setDepth(y + 100).setAlpha(0);
+
+        // Registrar como fonte de luz (raio de 3 tiles para ser bem visível)
+        if (typeof scene.addLightSource === 'function') {
+            this.lightSource = scene.addLightSource(this, 3);
+        }
     }
 
     /**
@@ -154,6 +159,7 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
 
         // Switch to destroyed frame
         this.setFrame(6);
+        if (this.lightSource) this.lightSource.active = false;
 
         // White flash
         this.setTint(0xffffff);

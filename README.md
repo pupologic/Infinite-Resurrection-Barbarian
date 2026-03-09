@@ -14,7 +14,6 @@ This is a Phaser-based game where you explore dungeons, fight enemies, and progr
 
 - **Engine**: [Phaser 3](https://phaser.io/)
 - **Assets**: Custom 2D pixel art and audio.
-- **Level Design**: Procedurally assisted dungeon generation with custom entity management.
 
 ## GitHub Pages Deployment
 

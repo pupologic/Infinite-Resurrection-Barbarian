@@ -383,7 +383,7 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
         // Helper to check if a direction is blocked
         const isDirectionBlocked = (angle) => {
             const rayStart = new Phaser.Math.Vector2(this.x, this.y);
-            // Cast ray slightly offset from center to avoid self-collision and ensuring width clearance
+            const feelerDist = 55; // Slightly increased for better anticipation
             const rayEnd = rayStart.clone().add(
                 new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle)).scale(feelerDist)
             );
@@ -391,7 +391,18 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
             const ray = new Phaser.Geom.Line(rayStart.x, rayStart.y, rayEnd.x, rayEnd.y);
             let blocked = false;
 
-            // Check against obstacles
+            // 1. Check against Tilemaps
+            if (this.scene.tileCollisionLayers) {
+                for (let layer of this.scene.tileCollisionLayers) {
+                    if (layer.getTileAtWorldXY(rayEnd.x, rayEnd.y, true)?.collides) {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+            if (blocked) return true;
+
+            // 2. Check against Sprite-based obstacles (Walls/Rocks)
             const checkBody = (go) => {
                 if (blocked || !go.active) return;
                 const body = go.collisionZone ? go.collisionZone.body : go.body;
@@ -404,8 +415,10 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
             };
 
             if (obstacles && Array.isArray(obstacles)) {
-                obstacles.forEach(group => group.children.iterate(checkBody));
-            } else if (obstacles) {
+                obstacles.forEach(group => {
+                    if (group && group.children) group.children.iterate(checkBody);
+                });
+            } else if (obstacles && obstacles.children) {
                 obstacles.children.iterate(checkBody);
             }
             return blocked;
@@ -476,7 +489,7 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
         if (this.isDead || this.isDying) return;
         if (this.isAttacking) return; // Don't interrupt attack
 
-        if (this.isHurt) {
+        if (this.isHurt || this.isParalyzed) {
             const hurtKey = `${this.animPrefix}-hurt-${this.lastDirection}`;
             if (this.scene.anims.exists(hurtKey)) {
                 this.play(hurtKey, true);
@@ -637,10 +650,12 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         const roll = Phaser.Math.Between(0, 100);
         let itemType = null;
-        if (roll < 10) itemType = 'HEALTH';
-        else if (roll < 15) itemType = 'SPEED';
+        if (roll < 12) itemType = 'HEALTH';
+        else if (roll < 18) itemType = 'SPEED';
         else if (roll < 35) itemType = 'COIN';
-        else if (roll < 37) itemType = 'STRENGTH';
+        else if (roll < 38) itemType = 'STRENGTH';
+        else if (roll < 45) itemType = 'MEAT'; // Novo drop: Meat (7% chance)
+        else if (roll < 48) itemType = 'HAM';  // Novo drop: Ham (3% chance)
 
         if (itemType) {
             if (!this.scene.items) {

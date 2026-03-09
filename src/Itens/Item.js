@@ -7,6 +7,8 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         else if (type === 'COIN') color = 0xffff00;
         else if (type === 'STRENGTH') color = 0x800080;
         else if (type === 'STAMINA') color = 0x00ffff;
+        else if (type === 'MEAT') color = 0xff8844;
+        else if (type === 'HAM') color = 0xff99aa;
 
         let key = `item_${type}`;
         if (type === 'HEALTH') key = 'heart_item';
@@ -16,6 +18,8 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         if (type === 'SPEED') key = 'speed_item';
         if (type === 'KEY') key = 'key_item';
         if (type === 'TORCH') key = 'torch_item';
+        if (type === 'MEAT') key = 'meat_item';
+        if (type === 'HAM') key = 'ham_item';
 
         if (!scene.textures.exists(key)) {
             // Procedural fallback only for truly missing textures (should rarely happen now)
@@ -71,6 +75,11 @@ class Item extends Phaser.Physics.Arcade.Sprite {
         // Bobbing animation?
         if (!extra.noInitialBob) {
             this.startFloating();
+        }
+
+        // Registrar como fonte de luz (raio pequeno de 1.5 tiles)
+        if (typeof scene.addLightSource === 'function') {
+            this.lightSource = scene.addLightSource(this, 1.5);
         }
     }
 

@@ -204,6 +204,8 @@ function preload() {
     this.load.image('spike_trap_full', 'Asset/Misc/spike_trap.png');
     this.load.image('lock_trap_full', 'Asset/Misc/lock_trap.png');
     this.load.spritesheet('rock', 'Asset/Misc/rock_tile.png', { frameWidth: 96, frameHeight: 96 });
+    this.load.image('fire_hazard_full', 'Asset/Misc/fire_tilesheet.png');
+    this.load.image('energy_hazard_full', 'Asset/Misc/energy_tilesheet.png');
     this.load.image('dirt', 'Asset/Misc/dirt.png');
     this.load.image('heart_item', 'Asset/Misc/heart_item.png');
     this.load.image('heart_ui', 'Asset/Misc/heart_UI.png');
@@ -219,6 +221,10 @@ function preload() {
     this.load.image('key_ui', 'Asset/Misc/key_UI.png');
     this.load.image('torch_item', 'Asset/Misc/torch_item.png');
     this.load.image('torch_ui', 'Asset/Misc/torch_UI.png');
+    this.load.image('meat_item', 'Asset/Misc/meat_item.png');
+    this.load.image('meat_ui', 'Asset/Misc/meat_UI.png');
+    this.load.image('ham_item', 'Asset/Misc/ham_item.png');
+    this.load.image('ham_ui', 'Asset/Misc/ham_UI.png');
     this.load.image('reborn_place', 'Asset/Misc/reborn_place.png');
     this.load.image('warrior_reborn_full', 'Asset/Warrior/warrior_reborn_tilesheet.png');
     this.load.image('runes_full', 'Asset/Misc/runes_tilesheet.png');
@@ -322,6 +328,10 @@ function preload() {
 }
 
 function create() {
+    // Fade in HTML overlay when the scene starts
+    const overlay = document.getElementById('global-fade-overlay');
+    if (overlay) overlay.classList.remove('active');
+
     // 1. Process Textures and Animations via Player class
     const { frameWidth, frameHeight } = Player.createAnimations(this);
     Enemy.createAnimations(this);
@@ -335,6 +345,32 @@ function create() {
     Trap.createAnimations(this);
     HoldingTrap.createAnimations(this);
     Rune.createAnimations(this);
+
+    // --- Hazard Animations (Fire & Energy ground hazards) ---
+    if (this.textures.exists('fire_hazard_full') && !this.textures.exists('fire_hazard_sheet')) {
+        const fireTex = this.textures.get('fire_hazard_full');
+        const fW = fireTex.source[0].width / 3;
+        const fH = fireTex.source[0].height / 3;
+        this.textures.addSpriteSheet('fire_hazard_sheet', fireTex.source[0].image, { frameWidth: fW, frameHeight: fH });
+        this.anims.create({
+            key: 'fire-hazard-burn',
+            frames: this.anims.generateFrameNumbers('fire_hazard_sheet', { start: 0, end: 8 }),
+            frameRate: 24,
+            repeat: -1
+        });
+    }
+    if (this.textures.exists('energy_hazard_full') && !this.textures.exists('energy_hazard_sheet')) {
+        const energyTex = this.textures.get('energy_hazard_full');
+        const eW = energyTex.source[0].width / 3;
+        const eH = energyTex.source[0].height / 3;
+        this.textures.addSpriteSheet('energy_hazard_sheet', energyTex.source[0].image, { frameWidth: eW, frameHeight: eH });
+        this.anims.create({
+            key: 'energy-hazard-pulse',
+            frames: this.anims.generateFrameNumbers('energy_hazard_sheet', { start: 0, end: 8 }),
+            frameRate: 24,
+            repeat: -1
+        });
+    }
 
     // Create Reborn Place Animation
     if (this.textures.exists('reborn_place')) {
@@ -380,12 +416,15 @@ function create() {
     this.items = this.physics.add.group();
     this.traps = this.physics.add.staticGroup();
     this.holdingTraps = this.physics.add.staticGroup();
+    this.rocks = this.physics.add.group({ classType: Rock });
     this.portals = this.physics.add.group();
     this.dirtDecorations = this.add.group();
     this.wallSprites = this.add.group();   // Wall Sprite visuals (not zones)
     this.debugShapes = this.add.group();   // Debug rects from Wall.js
     this.runes = this.physics.add.staticGroup(); // Tutorial rune objects
     this.poundFxGroup = this.add.group(); // Track ground pound FX for rune destruction
+    this.hazards = this.add.group();      // Ground hazards (fire / energy pools)
+    this.lightSources = [];               // Track dynamic light sources
 
     // 2. World Bounds
     this.cameras.main.setBounds(-1024, -1024, 2048, 2048);
@@ -401,7 +440,9 @@ function create() {
     this.physics.add.collider(player, this.walls);
     this.physics.add.collider(player, this.innerWalls);
     this.physics.add.collider(player, this.obstacles);
+    this.physics.add.collider(player, this.rocks);
     this.physics.add.collider(this.enemies, this.obstacles);
+    this.physics.add.collider(this.enemies, this.rocks);
     this.physics.add.collider(this.enemies, this.walls);
     this.physics.add.collider(this.enemies, this.innerWalls);
     this.physics.add.collider(this.enemies, this.enemies, null, (e1, e2) => {
@@ -415,24 +456,43 @@ function create() {
     // Projectile Collisions
     this.physics.add.overlap(player, this.projectiles, (p, proj) => {
         if (!p.isDead && !p.isGroundDashing && !p.isJumpKicking) {
-            p.takeDamage(10);
-            this.sound.play('Explosion');
-            proj.destroy();
+            // Se estiver com o escudo de energia ativo (Skill), bloqueio total (sem fogo)
+            if (p.energyShieldActive) {
+                proj.spawnHazards = false;
+                this.sound.play('AutoPunch', { volume: 0.6, detune: -500 });
+                this.showDamagePopup("BLOCKED", p.x, p.y - 40, "#ffffff");
+                proj.destroy();
+            } else if (p.isDefending) {
+                // Defesa comum com F: Reduz dano (no Player.js) mas GERA fogo normalmente
+                p.takeDamage(10);
+                this.sound.play('Explosion');
+                proj.destroy();
+            } else {
+                // Sem defesa: Dano total + Fogo
+                p.takeDamage(10);
+                this.sound.play('Explosion');
+                proj.destroy();
+            }
         }
     });
     this.physics.add.collider(this.projectiles, this.obstacles, (p, o) => p.destroy());
+    this.physics.add.collider(this.projectiles, this.rocks, (p, o) => p.destroy());
     this.physics.add.collider(this.projectiles, this.walls, (p, w) => p.destroy());
     this.physics.add.collider(this.projectiles, this.innerWalls, (p, w) => p.destroy());
     this.physics.add.collider(this.projectiles, this.interactables, (p, i) => {
         if (!(i instanceof Door) || !i.isOpen) p.destroy();
     });
 
-    // Helper to spawn items
-    this.spawnItem = (x, y, type, extra = {}) => {
-        let item = new Item(this, x, y, type, extra);
-        this.items.add(item);
-        item.setVelocity(Phaser.Math.Between(-50, 50), -150);
-        item.setDrag(50);
+    // Helper para outros objetos registrarem fontes de luz (Runes, Tochas, etc.)
+    this.addLightSource = (obj, radius = 2) => {
+        const sourceData = { source: obj, radius: radius, active: true };
+        this.lightSources.push(sourceData);
+        // Garantir que a fonte de luz seja removida se o objeto for destruído
+        obj.on('destroy', () => {
+            const idx = this.lightSources.indexOf(sourceData);
+            if (idx !== -1) this.lightSources.splice(idx, 1);
+        });
+        return sourceData;
     };
 
     // GENERATE LEVEL 1
@@ -508,6 +568,14 @@ function create() {
                     updateInventoryUI('torch', p.inventory.torch);
                     this.showPopup("Tocha coletada!", p.x, p.y - 50);
                     break;
+                case 'MEAT':
+                    p.inventory.meat = (p.inventory.meat || 0) + 1;
+                    updateInventoryUI('meat', p.inventory.meat);
+                    break;
+                case 'HAM':
+                    p.inventory.ham = (p.inventory.ham || 0) + 1;
+                    updateInventoryUI('ham', p.inventory.ham);
+                    break;
             }
             p.triggerPickupExpression();
             this.sound.play('Item');
@@ -549,14 +617,14 @@ function create() {
         });
     };
 
-    this.showPopup = (text, x, y) => {
-        // Renderizar em 2× e reduzir com setScale(0.5) para texto nítido
+    this.showPopup = (text, x, y, color = '#fff') => {
+        // Reduzi para 16px (visual 8px) para ficar mais sutil como pedido
         let t = this.add.text(x, y, text, {
-            fontSize: '32px',          // 2× de 16px visual
+            fontSize: '16px',
             fontFamily: '"Press Start 2P"',
-            color: '#fff',
+            color: color,
             stroke: '#000',
-            strokeThickness: 6,        // 2× proporcional
+            strokeThickness: 3,
             align: 'center',
             resolution: 2
         }).setOrigin(0.5).setScale(0.5);
@@ -577,7 +645,7 @@ function create() {
     setupInventoryClicks();
 
     // Initial UI Sync
-    const invTypes = ['health', 'speed', 'strength', 'stamina', 'coin', 'key'];
+    const invTypes = ['health', 'speed', 'strength', 'stamina', 'coin', 'key', 'meat', 'ham'];
     invTypes.forEach(t => {
         let count = 0;
         if (t === 'coin') count = player.coins || 0;
@@ -642,6 +710,8 @@ const ITEM_METADATA = {
     speed: { icon: '<img src="Asset/Misc/speed_UI.png" title="Speed Potion">', title: 'Speed Potion', usable: true },
     strength: { icon: '<img src="Asset/Misc/force_UI.png" title="Strength Potion">', title: 'Strength Potion', usable: true },
     stamina: { icon: '<img src="Asset/Misc/stamina_UI.png" title="Stamina Potion">', title: 'Stamina Potion', usable: true },
+    meat: { icon: '<img src="Asset/Misc/meat_UI.png" title="Meat">', title: 'Meat', usable: true },
+    ham: { icon: '<img src="Asset/Misc/ham_UI.png" title="Ham">', title: 'Ham', usable: true },
     coin: { icon: '<img src="Asset/Misc/coin_UI.png" title="Coins">', title: 'Coins', usable: false },
     key: { icon: '<img src="Asset/Misc/key_UI.png" title="Keys">', title: 'Keys', usable: false },
     torch: {
@@ -721,6 +791,8 @@ function togglePause(scene) {
         scene.physics.pause();
         scene.anims.pauseAll();
         scene.tweens.pauseAll();
+        scene.time.paused = true; // Pausa eventos temporais (ex: burns, poisons)
+        if (player && player.fireParticles) player.fireParticles.pause(); // Pausa o sistema de partículas
         createPauseScreen(scene);
 
         if (pauseUI) {
@@ -740,6 +812,8 @@ function togglePause(scene) {
         scene.physics.resume();
         scene.anims.resumeAll();
         scene.tweens.resumeAll();
+        scene.time.paused = false; // Retoma os eventos temporais
+        if (player && player.fireParticles) player.fireParticles.resume(); // Retoma o sistema de partículas
     }
 }
 
@@ -859,24 +933,22 @@ function update(time, delta) {
 
     if (player) {
         if (!player.inventory) {
-            player.inventory = { health: 0, speed: 0, strength: 0, stamina: 0 };
+            player.inventory = { health: 0, speed: 0, strength: 0, stamina: 0, meat: 0, ham: 0, torch: 0 };
         }
         player.update(time, delta);
+        if (this.hazards) {
+            this.hazards.getChildren().forEach(h => h.update(delta, player));
+        }
         this.punchSoundPlayedThisFrame = -1; // Reset sound tracker for this update
 
         // --- LUZ BASEADA EM TILES (estilo Tibia retro) ---
-        if (this.lightGfx && player.active) {
+        if (this.lightGfx) {
             const cam = this.cameras.main;
             const TILE = 64;
-            const R = this.playerLightRadius || 5; // raio fixo em tiles
 
             // Oscilação de borda: dois senos lentos (respira, não pisca)
-            // O breathe só vai afetar tiles nas bordas, não o núcleo interno
             const breathe = Math.sin(time * 0.00028) * 0.18
                 + Math.sin(time * 0.00012) * 0.07;
-
-            const ptx = Math.floor(player.x / TILE);
-            const pty = Math.floor(player.y / TILE);
 
             const startTX = Math.floor(cam.worldView.left / TILE) - 1;
             const startTY = Math.floor(cam.worldView.top / TILE) - 1;
@@ -885,48 +957,65 @@ function update(time, delta) {
 
             this.lightGfx.clear();
 
-            // Raios 1, 2 e 3 (normDist <= 0.6) = 100% iluminado, sem oscilação
-            // A partir do 4º raio começa a escuridão e o breathe
-            const getAlpha = (nd) => {
-                if (nd <= 0.60) return 0;    // raios 1-3: totalmente lit (fixo)
-                if (nd <= 0.73) return 0.30; // raio 4: penumbra
-                if (nd <= 0.86) return 0.62; // raio 5: escuro
-                if (nd <= 1.00) return 0.88; // borda: muito escuro
-                return 0.96;                  // além do raio: preto
+            const getAlphaValue = (nd) => {
+                if (nd <= 0.60) return 0;    // raios internos: totalmente iluminados
+                if (nd <= 0.73) return 0.30;
+                if (nd <= 0.86) return 0.62;
+                if (nd <= 1.00) return 0.88; // borda
+                return 0.96;                 // preto/escuridão
             };
+
+            // Prepare current positions of all light sources for this frame
+            const activeLights = [];
+
+            // Player Light
+            if (player && player.active) {
+                activeLights.push({
+                    tx: Math.floor(player.x / TILE),
+                    ty: Math.floor(player.y / TILE),
+                    radius: this.playerLightRadius || 5
+                });
+            }
+
+            // Other Lights (Runes, Objects)
+            if (this.lightSources) {
+                this.lightSources.forEach(src => {
+                    if (src.active && src.source && src.source.active) {
+                        activeLights.push({
+                            tx: Math.floor(src.source.x / TILE),
+                            ty: Math.floor(src.source.y / TILE),
+                            radius: src.radius
+                        });
+                    }
+                });
+            }
 
             for (let ty = startTY; ty <= endTY; ty++) {
                 for (let tx = startTX; tx <= endTX; tx++) {
-                    let rawDist = Math.sqrt((tx - ptx) ** 2 + (ty - pty) ** 2);
-                    let normDist = rawDist / R;
+                    let bestAlpha = 0.96; // Base darkness
 
-                    // Pontos de luz extras
-                    if (this.lightPoints) {
-                        this.lightPoints.forEach(lp => {
-                            const ltx = Math.floor(lp.x / TILE);
-                            const lty = Math.floor(lp.y / TILE);
-                            const lr = (lp.radius || 180) / TILE;
-                            const d = Math.sqrt((tx - ltx) ** 2 + (ty - lty) ** 2);
-                            normDist = Math.min(normDist, d / lr);
-                        });
+                    activeLights.forEach(light => {
+                        // Distância baseada em índices de tiles (restaura o visual "stepping")
+                        const dist = Math.sqrt((tx - light.tx) ** 2 + (ty - light.ty) ** 2);
+                        const normDist = dist / light.radius;
+
+                        // Breathe afeta apenas as bordas da luz
+                        const edgeFactor = Math.max(0, normDist - 0.60) / 0.40;
+                        const adjustedND = normDist + breathe * edgeFactor;
+
+                        const alpha = getAlphaValue(adjustedND);
+                        if (alpha < bestAlpha) bestAlpha = alpha;
+                    });
+
+                    if (bestAlpha > 0.01) {
+                        const sx = tx * TILE - cam.worldView.left;
+                        const sy = ty * TILE - cam.worldView.top;
+                        this.lightGfx.fillStyle(0x000000, bestAlpha);
+                        this.lightGfx.fillRect(sx, sy, TILE, TILE);
                     }
-
-                    // Breathe só afeta a partir do 4º raio em diante (normDist > 0.60)
-                    const edgeFactor = Math.max(0, normDist - 0.60) / 0.40;
-                    const adjustedND = normDist + breathe * edgeFactor;
-
-                    const alpha = getAlpha(adjustedND);
-                    if (alpha < 0.01) continue;
-
-                    const sx = tx * TILE - cam.worldView.left;
-                    const sy = ty * TILE - cam.worldView.top;
-
-                    this.lightGfx.fillStyle(0x000000, alpha);
-                    this.lightGfx.fillRect(sx, sy, TILE, TILE);
                 }
             }
         }
-
         // Interaction Check
         if (Phaser.Input.Keyboard.JustDown(player.interactKey)) {
             // Find nearest interactable
@@ -1107,6 +1196,34 @@ function update(time, delta) {
                     }
                 });
             }
+
+            // Damage Rocks
+            if (this.rocks && player.isAttacking) {
+                this.rocks.getChildren().forEach(rock => {
+                    if (rock.isBroken) return;
+
+                    const dist = Phaser.Math.Distance.Between(player.x, player.y, rock.x, rock.y);
+                    const reach = 40 + player.attackReach + 10;
+
+                    if (dist < reach) {
+                        const currentFrame = player.anims.currentFrame ? player.anims.currentFrame.index : -1;
+                        // Trigger hits on Frame 1 and Frame 4
+                        if ((currentFrame === 1 || currentFrame === 4) &&
+                            (rock.lastHitPunchId !== player.punchId || rock.lastHitPunchFrame !== currentFrame)) {
+
+                            rock.takeDamage(1);
+                            rock.lastHitPunchId = player.punchId;
+                            rock.lastHitPunchFrame = currentFrame;
+                            player.lastPunchTime = time;
+
+                            if (this.punchSoundPlayedThisFrame !== currentFrame) {
+                                this.sound.play('Punch');
+                                this.punchSoundPlayedThisFrame = currentFrame;
+                            }
+                        }
+                    }
+                });
+            }
         }
     }
 }
@@ -1203,17 +1320,9 @@ function generateLevel(scene) {
 
                 // Chance to place rock
                 if (Phaser.Math.Between(0, 100) < 15) { // 15% chance per tile
-                    const randomFrame = Phaser.Math.Between(0, 3);
-                    const rock = scene.add.image(tx, ty, 'rock', randomFrame);
-                    rock.setDepth(ty);
-
-                    // Custom Collision System (same as random level rocks)
-                    const baseY = ty + 12;
-                    const baseX = tx - 8;
-                    const rockBase = scene.obstacles.create(baseX, baseY, null);
-                    rockBase.setVisible(false);
-                    const radius = 24;
-                    rockBase.body.setCircle(radius);
+                    const randomFrame = Phaser.Math.Between(0, 4);
+                    const rock = new Rock(scene, tx, ty, randomFrame);
+                    scene.rocks.add(rock);
                 }
             }
         }
@@ -1341,17 +1450,13 @@ function generateLevel(scene) {
                     if (objTypeLower.includes('up')) dir = 'up';
                     if (objTypeLower.includes('left')) dir = 'left';
                     if (objTypeLower.includes('right')) dir = 'right';
-
                     const loot = obj.properties?.find(p => p.name === 'loot')?.value || 'COIN';
                     scene.interactables.add(new Chest(scene, ox, oy, { type: loot }, { direction: dir }));
                 } else if (objTypeLower === 'rock') {
-                    const randomFrame = Phaser.Math.Between(0, 3);
-                    const rock = scene.add.image(ox, oy, 'rock', randomFrame).setDepth(oy);
-                    // Add to groundLayer so it gets destroyed on level transition (nextLevel clears this group)
-                    scene.groundLayer.add(rock);
-                    // Add collision physics body
-                    const rockBase = scene.obstacles.create(ox - 8, oy + 12, null).setVisible(false);
-                    if (rockBase && rockBase.body) rockBase.body.setCircle(24);
+                    const randomFrame = Phaser.Math.Between(0, 4); // 5 frames [0,1,2,3,4]
+                    // Pass obj to allow custom radius/offsetX/offsetY from Tiled properties
+                    const rock = new Rock(scene, ox, oy, randomFrame, obj);
+                    scene.rocks.add(rock);
                 } else if (objTypeLower.startsWith('rune_')) {
                     // rune_0 to rune_5
                     const runeIdx = parseInt(objTypeLower.split('_')[1]) || 0;
@@ -1444,67 +1549,8 @@ function generateLevel(scene) {
     }
 }
 
-function nextLevel(scene, targetLevelIndex = undefined) {
-    scene.sound.play('NextLevel');
-    if (targetLevelIndex !== undefined) {
-        currentLevel = targetLevelIndex;
-    } else {
-        if (currentLevel >= MAX_LEVELS) {
-            console.log("GAME VICTORY");
-            currentLevel = 1; // Reset to Level 1 (Tutorial deleted)
-            console.log("Resetting to Level 1");
-        } else {
-            currentLevel++;
-        }
-    }
 
-    // Destruir tilemap Phaser ativo (se houver)
-    // Destroy tile collision layer references FIRST (they are processed manually each frame)
-    scene.tileCollisionLayers = [];
-    scene.tiledColliders = [];
-    if (scene.activeTiledLayers) {
-        scene.activeTiledLayers.forEach(l => l.destroy());
-        scene.activeTiledLayers = [];
-    }
-    if (scene.activeTiledMap) {
-        scene.activeTiledMap.destroy();
-        scene.activeTiledMap = null;
-    }
 
-    // Clear Level
-    scene.groundLayer.clear(true, true);
-    scene.walls.clear(true, true);
-    scene.innerWalls.clear(true, true);
-    scene.obstacles.clear(true, true);
-    scene.enemies.clear(true, true);
-    scene.projectiles.clear(true, true);
-    scene.interactables.clear(true, true);
-    scene.items.clear(true, true);
-    scene.traps.clear(true, true);
-    scene.holdingTraps.clear(true, true);
-    scene.portals.clear(true, true);
-    scene.runes.clear(true, true);
-    scene.dirtDecorations.clear(true, true);
-    scene.wallSprites.clear(false, false);  // Wall objects already destroyed by walls.clear above — only remove refs
-    scene.debugShapes.clear(true, true);
-
-    // Force Phaser physics debug renderer to clear stale body outlines
-    if (scene.physics.world.debugGraphic) {
-        scene.physics.world.debugGraphic.clear();
-    }
-    // Destroy spawn marker if exists
-    if (scene.rebornSprite) {
-        scene.rebornSprite.destroy();
-        scene.rebornSprite = null;
-    }
-
-    // Reset Player state (position will be handled by generateLevel)
-    player.heal(100);
-
-    // Generate New
-    generateLevel(scene);
-    player.triggerSpawnEffect();
-}
 
 
 function setupInventoryClicks() {
@@ -1587,6 +1633,21 @@ function updateStatusUI() {
     updateBar('bar-roar', player.roarTimer, player.roarCooldown);
     updateBar('bar-pound', player.poundTimer, player.poundCooldown);
 
+    // Shield UI: Drains while active, recharges during cooldown
+    const shieldBar = document.getElementById('bar-shield');
+    if (shieldBar) {
+        if (player.energyShieldActive) {
+            const pct = Math.max(0, (player.energyShieldTimer / player.energyShieldDuration) * 100);
+            shieldBar.style.width = `${pct}%`;
+            shieldBar.style.backgroundColor = '#88ccff'; // cyan bright while active
+            shieldBar.classList.add('charging');
+            shieldBar.classList.remove('ready');
+        } else {
+            shieldBar.style.backgroundColor = ''; // Reset to default CSS
+            updateBar('bar-shield', player.energyShieldCooldownTimer, player.energyShieldCooldown);
+        }
+    }
+
     // Update Portrait Expression
     const portrait = document.getElementById('player-profile-img');
     if (portrait) {
@@ -1625,7 +1686,19 @@ function nextLevel(scene, targetLevelIndex = undefined) {
         }
     }
 
+    // --- SEGURANÇA: Resetar estados de movimentação do Player ao trocar de fase ---
+    if (player) {
+        player.isGroundDashing = false;
+        player.isJumpKicking = false;
+        player.isAttacking = false;
+        player.hasJumpKicked = false;
+        player.actionLockTimer = 300; // Trava movimentação por 1 segundo na entrada
+        if (player.body) player.setVelocity(0, 0);
+    }
+
     // Destruir tilemap Phaser ativo (se houver)
+    scene.tileCollisionLayers = [];
+    scene.tiledColliders = [];
     if (scene.activeTiledLayers) {
         scene.activeTiledLayers.forEach(l => l.destroy());
         scene.activeTiledLayers = [];
@@ -1640,6 +1713,8 @@ function nextLevel(scene, targetLevelIndex = undefined) {
     scene.walls.clear(true, true);
     scene.innerWalls.clear(true, true);
     scene.obstacles.clear(true, true);
+    scene.rocks.clear(true, true);
+    scene.hazards.clear(true, true);
     scene.enemies.clear(true, true);
     scene.projectiles.clear(true, true);
     scene.interactables.clear(true, true);
@@ -1714,65 +1789,6 @@ function setupInventoryClicks() {
     });
 }
 
-function updateStatusUI() {
-    if (!player) return;
-
-    // Health
-    const hpPercent = Phaser.Math.Clamp((player.hp / player.maxHp) * 100, 0, 100);
-    const hpBar = document.getElementById('bar-health');
-    const hpText = document.getElementById('text-health');
-    if (hpBar) hpBar.style.width = `${hpPercent}%`;
-    if (hpText) hpText.innerText = `${Math.ceil(player.hp)}/${player.maxHp}`;
-
-    // Stamina
-    const stPercent = Phaser.Math.Clamp((player.stamina / player.maxStamina) * 100, 0, 100);
-    const stBar = document.getElementById('bar-stamina');
-    const stText = document.getElementById('text-stamina');
-    if (stBar) stBar.style.width = `${stPercent}%`;
-    if (stText) stText.innerText = `${Math.ceil(player.stamina)}/${player.maxStamina}`;
-
-    // Helper for Cooldowns: (1 - timer/max) * 100
-    const updateBar = (id, current, max) => {
-        const bar = document.getElementById(id);
-        if (bar) {
-            const pct = Math.max(0, (1 - (current / max)) * 100);
-            bar.style.width = `${pct}%`;
-
-            if (pct >= 99) {
-                bar.classList.add('ready');
-                bar.classList.remove('charging');
-            } else {
-                bar.classList.add('charging');
-                bar.classList.remove('ready');
-            }
-        }
-    };
-
-    updateBar('bar-dash', player.dashCooldownTimer, player.dashCooldown);
-    updateBar('bar-kick', player.jumpKickCooldownTimer, player.jumpKickCooldown);
-    updateBar('bar-roar', player.roarTimer, player.roarCooldown);
-    updateBar('bar-pound', player.poundTimer, player.poundCooldown);
-
-    // Update Portrait Expression
-    const portrait = document.getElementById('player-profile-img');
-    if (portrait) {
-        portrait.className = 'profile-img';
-
-        if (player.isDead || player.hp <= 0) {
-            portrait.classList.add('dead');
-        } else if (player.isHurt) {
-            portrait.classList.add('hurt');
-        } else if (player.isAttacking || player.isJumpKicking || player.isGroundDashing || player.isRoaring || player.isPounding) {
-            portrait.classList.add('action');
-        } else if (player.isPickingUp) {
-            portrait.classList.add('pickup');
-        } else if (player.hp < player.maxHp / 2) {
-            portrait.classList.add('low-hp');
-        } else {
-            portrait.classList.add('base');
-        }
-    }
-}
 
 // Helper to update HTML UI
 function updateInventoryUI(type, count) {

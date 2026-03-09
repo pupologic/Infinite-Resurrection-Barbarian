@@ -361,6 +361,16 @@ class LichKing extends Enemy {
         this.scene.tweens.add({ targets: proj, scaleX: 1, scaleY: 1, duration: 150, ease: 'Back.easeOut' });
         const speed = 250;
         proj.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+
+        const originalDestroy = proj.destroy;
+        proj.destroy = (...args) => {
+            if (this.scene && this.scene.hazards && proj.scene) {
+                const hazard = new HazardObject(this.scene, proj.x, proj.y, 'energy');
+                this.scene.hazards.add(hazard);
+            }
+            originalDestroy.apply(proj, args);
+        };
+
         this.scene.time.delayedCall(3000, () => { if (proj.active) proj.destroy(); });
     }
 
@@ -380,6 +390,16 @@ class LichKing extends Enemy {
             proj.setDepth(this.depth + 10);
             const speed = 200;
             proj.setVelocity(Math.cos(d.a) * speed, Math.sin(d.a) * speed);
+
+            const originalDestroy = proj.destroy;
+            proj.destroy = (...args) => {
+                if (this.scene && this.scene.hazards && proj.scene) {
+                    const hazard = new HazardObject(this.scene, proj.x, proj.y, 'energy');
+                    this.scene.hazards.add(hazard);
+                }
+                originalDestroy.apply(proj, args);
+            };
+
             this.scene.time.delayedCall(3000, () => { if (proj.active) proj.destroy(); });
         });
     }

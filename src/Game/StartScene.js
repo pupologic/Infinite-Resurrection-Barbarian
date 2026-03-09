@@ -149,36 +149,44 @@ class StartScene extends Phaser.Scene {
             startBtn.parentNode.replaceChild(newBtn, startBtn);
             newBtn.onclick = () => {
                 this.sound.play('StartButton');
-                if (this.menuMusic) this.menuMusic.stop();
 
-                // UI Restoration Logic: show game panels again
-                if (startMenu) startMenu.style.display = 'none';
-                if (uiWrapper) {
-                    uiWrapper.style.padding = '';
-                    uiWrapper.style.background = '';
-                    uiWrapper.style.boxShadow = '';
-                    // Apply scale(0.8) centered ONLY when game officially starts
-                    uiWrapper.style.transform = 'scale(0.8)';
-                    uiWrapper.style.transformOrigin = 'center center';
-                }
-                // Switch to contain mode for gameplay (fits screen with no crop)
-                if (typeof window.scaleGameContain === 'function') window.scaleGameContain();
-                if (statusSidebar) statusSidebar.style.display = '';
-                if (inventorySidebar) inventorySidebar.style.display = '';
-                if (gameContainer) {
-                    gameContainer.style.position = '';
-                    gameContainer.style.top = '';
-                    gameContainer.style.left = '';
-                    gameContainer.style.width = '';
-                    gameContainer.style.height = '';
-                    gameContainer.style.border = '';
-                    gameContainer.style.boxShadow = '';
-                    gameContainer.style.background = '';
-                    gameContainer.style.zIndex = '';
-                }
-                // Resize back to game canvas size
-                this.scale.resize(800, 600);
-                this.scene.start('GameScene');
+                // Fade out HTML overlay before transitioning
+                const overlay = document.getElementById('global-fade-overlay');
+                if (overlay) overlay.classList.add('active');
+
+                // Wait for the CSS transition (800ms)
+                this.time.delayedCall(800, () => {
+                    if (this.menuMusic) this.menuMusic.stop();
+
+                    // UI Restoration Logic: show game panels again
+                    if (startMenu) startMenu.style.display = 'none';
+                    if (uiWrapper) {
+                        uiWrapper.style.padding = '';
+                        uiWrapper.style.background = '';
+                        uiWrapper.style.boxShadow = '';
+                        // Apply scale(0.8) centered ONLY when game officially starts
+                        uiWrapper.style.transform = 'scale(0.8)';
+                        uiWrapper.style.transformOrigin = 'center center';
+                    }
+                    // Switch to contain mode for gameplay (fits screen with no crop)
+                    if (typeof window.scaleGameContain === 'function') window.scaleGameContain();
+                    if (statusSidebar) statusSidebar.style.display = '';
+                    if (inventorySidebar) inventorySidebar.style.display = '';
+                    if (gameContainer) {
+                        gameContainer.style.position = '';
+                        gameContainer.style.top = '';
+                        gameContainer.style.left = '';
+                        gameContainer.style.width = '';
+                        gameContainer.style.height = '';
+                        gameContainer.style.border = '';
+                        gameContainer.style.boxShadow = '';
+                        gameContainer.style.background = '';
+                        gameContainer.style.zIndex = '';
+                    }
+                    // Resize back to game canvas size
+                    this.scale.resize(800, 600);
+                    this.scene.start('GameScene');
+                });
             };
         }
     }

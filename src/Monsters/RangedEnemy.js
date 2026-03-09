@@ -76,11 +76,14 @@ class RangedEnemy extends Enemy {
         this.visionRange = 450;
         this.keepDistance = 250;
 
-        this.attackRate = 2000;
+        this.attackRate = 15000;
         this.nextAttackTime = 0;
 
         // Attack state handled by base class flags mostly, but we add custom cooldown
         this.projectileGroup = scene.projectiles;
+
+        // Ajuste de corpo para o Imp (menor que o Bull)
+        this.body.setCircle(15, 33, 33);
     }
 
     update(time, delta, player, obstacles) {
@@ -168,10 +171,10 @@ class RangedEnemy extends Enemy {
                 // Calculate discrete target to use moveTowards for smoothing
                 const targetX = this.x + Math.cos(angle) * 100;
                 const targetY = this.y + Math.sin(angle) * 100;
-                this.moveTowards(targetX, targetY, this.speed);
+                this.moveTowards(targetX, targetY, this.speed, obstacles);
             } else if (distToPlayer > this.keepDistance + 20) {
                 // Too far, move closer
-                this.moveTowards(player.x, player.y, this.speed);
+                this.moveTowards(player.x, player.y, this.speed, obstacles);
             } else {
                 // Good distance, maintain
                 this.setVelocity(0);
@@ -186,7 +189,7 @@ class RangedEnemy extends Enemy {
                 const wanderRadius = 150;
                 const targetX = this.startX + Phaser.Math.Between(-wanderRadius, wanderRadius);
                 const targetY = this.startY + Phaser.Math.Between(-wanderRadius, wanderRadius);
-                this.moveTowards(targetX, targetY, 40); // Increased wander speed
+                this.moveTowards(targetX, targetY, 40, obstacles); // Increased wander speed
                 this.idleMoveDuration = Phaser.Math.Between(1000, 3000);
                 this.idleMoveTimer = this.idleMoveDuration + Phaser.Math.Between(1000, 2000);
             } else if (this.idleMoveTimer < 1000) {
@@ -222,6 +225,26 @@ class RangedEnemy extends Enemy {
         const speed = 250;
         fireball.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
         fireball.setRotation(angle); // Rotate towards direction
+
+        // Override destroy to spawn fire hazards
+        fireball.spawnHazards = true;
+        const originalDestroy = fireball.destroy;
+        fireball.destroy = (...args) => {
+            if (this.scene && this.scene.hazards && fireball.scene && fireball.spawnHazards) { // ensure scene is still valid
+                const offsets = [
+                    { dx: 0, dy: 0 },
+                    { dx: 64, dy: 0 },
+                    { dx: -64, dy: 0 },
+                    { dx: 0, dy: 64 },
+                    { dx: 0, dy: -64 }
+                ];
+                offsets.forEach(offset => {
+                    const hazard = new HazardObject(this.scene, fireball.x + offset.dx, fireball.y + offset.dy, 'fire');
+                    this.scene.hazards.add(hazard);
+                });
+            }
+            originalDestroy.apply(fireball, args);
+        };
 
         this.scene.time.delayedCall(2000, () => {
             if (fireball.active) fireball.destroy();
