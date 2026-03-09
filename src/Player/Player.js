@@ -363,7 +363,9 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             }
         });
 
-        this.walkSound = scene.sound.add('WalkPlayer', { loop: true, volume: 0.5 });
+        this.walkSound = scene.sound.add('WalkPlayer', { loop: false, volume: 0.5 });
+        this.lastWalkSoundTime = 0;
+        this.walkSoundInterval = 350; // ms entre cada som de passo (Aumentado em 25% do tempo original)
 
         // Input Setup
         this.cursors = scene.input.keyboard.createCursorKeys();
@@ -797,17 +799,21 @@ class Player extends Phaser.Physics.Arcade.Sprite {
         // 5. Animations
         this.handleAnimations(moveX, moveY);
 
-        // Walk Sound Logic
+        // Walk Sound Logic (Manual Trigger for frequency control)
         const isMovingOnGround = (Math.abs(this.body.velocity.x) > 5 || Math.abs(this.body.velocity.y) > 5) &&
             this.altitude === 0 && !this.isDead && !this.isDying && !this.isTrapped;
+
         if (isMovingOnGround) {
-            if (!this.walkSound.isPlaying) {
+            if (time > this.lastWalkSoundTime + this.walkSoundInterval) {
                 this.walkSound.play();
+                this.lastWalkSoundTime = time;
             }
         } else {
+            // Interrompe o som imediatamente ao parar e reseta o timer
             if (this.walkSound.isPlaying) {
                 this.walkSound.stop();
             }
+            this.lastWalkSoundTime = 0;
         }
 
         // 6. Visual Updates
@@ -1297,6 +1303,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             // Create shield if it doesn't exist
             if (!this.shieldFx) {
                 this.shieldFx = this.scene.add.sprite(this.x, this.y, 'warrior_shield_fx');
+                this.shieldFx.setScale(1.2); // Aumentado em 20%
                 this.shieldFx.setBlendMode('ADD');
                 this.shieldFx.setDepth(this.depth + 1);
                 this.shieldFx.play('shield-fx-anim');

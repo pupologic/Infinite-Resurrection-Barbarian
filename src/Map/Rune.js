@@ -71,10 +71,10 @@ class Rune extends Phaser.Physics.Arcade.Sprite {
         // Escalar para CIMA (como o CSS faz) borra; escalar para BAIXO preserva nitidez.
         this.hintText = scene.add.text(x, y - 50, Rune.HINT_TEXTS[this.frameIndex], {
             fontFamily: '"Press Start 2P"',
-            fontSize: '28px',        // 2× o visual desejado (14px visual)
+            fontSize: '22px',        // 2× o visual desejado (14px visual)
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: 16,      // 2× proporcional ao font size
+            strokeThickness: 13,      // 2× proporcional ao font size
             align: 'center',
             resolution: 2            // forçar resolução double no canvas do texto
         }).setOrigin(0.5).setScale(0.5).setDepth(y + 100).setAlpha(0);
